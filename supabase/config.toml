@@ -1,1 +1,4 @@
 project_id = "wgrkrxxbqojdmbwzvgjo"
+
+[functions.binance-arbitrage]
+verify_jwt = false

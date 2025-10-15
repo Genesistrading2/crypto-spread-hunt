@@ -9,6 +9,7 @@ interface ArbitrageCardProps {
   futuresPrice: number;
   spread: number;
   volume24h: string;
+  exchange: string;
 }
 
 export const ArbitrageCard = ({
@@ -18,59 +19,86 @@ export const ArbitrageCard = ({
   futuresPrice,
   spread,
   volume24h,
+  exchange,
 }: ArbitrageCardProps) => {
-  const isOpportunity = spread > 0.5;
-  const spreadColor = spread > 1 ? "text-success" : spread > 0.5 ? "text-warning" : "text-neutral";
+  const getSpreadStatus = () => {
+    if (Math.abs(spread) < 0.3) return { label: "BAIXA", color: "bg-yellow-500/20 text-yellow-500" };
+    if (Math.abs(spread) < 0.8) return { label: "Normal", color: "bg-emerald-500/20 text-emerald-500" };
+    return { label: "ALTA", color: "bg-destructive/20 text-destructive" };
+  };
+
+  const getFuturesType = () => {
+    return spread > 0 
+      ? { label: "Long Futuros", color: "bg-success/20 text-success" }
+      : { label: "Short Futuros", color: "bg-warning/20 text-warning" };
+  };
+
+  const status = getSpreadStatus();
+  const futuresType = getFuturesType();
   
   return (
-    <Card className="p-6 bg-gradient-card border-border hover:border-accent/50 transition-all duration-300 hover:shadow-glow">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-xl font-bold text-foreground">{symbol}</h3>
-            {isOpportunity && (
-              <Badge variant="default" className="bg-success text-success-foreground">
-                Oportunidade
-              </Badge>
-            )}
+    <Card className="p-4 bg-gradient-to-br from-amber-50/50 to-amber-100/30 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200/50 dark:border-amber-800/30 hover:shadow-lg transition-all duration-300">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className="bg-background p-3 rounded-lg shadow-sm">
+            <h3 className="text-2xl font-bold text-foreground">{symbol}</h3>
           </div>
-          <p className="text-sm text-muted-foreground">{name}</p>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                {exchange}
+              </Badge>
+              <Badge className={`text-xs px-2 py-0.5 ${status.color}`}>
+                {status.label}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">{name}</p>
+          </div>
         </div>
-        <div className={`text-right ${spreadColor}`}>
-          <div className="flex items-center gap-1 justify-end">
+        <div className="text-right">
+          <div className={`flex items-center gap-1 justify-end ${spread > 0 ? 'text-success' : 'text-destructive'}`}>
             {spread > 0 ? (
-              <TrendingUp className="h-5 w-5" />
+              <TrendingUp className="h-4 w-4" />
             ) : (
-              <TrendingDown className="h-5 w-5" />
+              <TrendingDown className="h-4 w-4" />
             )}
-            <span className={`text-3xl font-bold ${isOpportunity ? 'animate-pulse-glow' : ''}`}>
-              {spread.toFixed(2)}%
+            <span className="text-2xl font-bold">
+              {spread > 0 ? '+' : ''}{spread.toFixed(2)}%
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Spread Spot/Futuros</p>
+          <p className="text-xs text-muted-foreground mt-1">Spread de Arbitragem</p>
         </div>
       </div>
       
-      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+      <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border/50">
         <div>
-          <p className="text-xs text-muted-foreground mb-1">Preço Spot</p>
-          <p className="text-lg font-semibold text-foreground">
-            ${spotPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          <div className="flex items-center gap-1 mb-1">
+            <div className="h-2 w-2 rounded-full bg-success" />
+            <p className="text-xs text-muted-foreground">Spot</p>
+          </div>
+          <p className="text-sm font-semibold text-foreground">
+            US$ {spotPrice.toLocaleString('pt-BR', { minimumFractionDigits: spotPrice < 1 ? 4 : 2 })}
           </p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground mb-1">Preço Futuros</p>
-          <p className="text-lg font-semibold text-foreground">
-            ${futuresPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          <div className="flex items-center gap-1 mb-1">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <p className="text-xs text-muted-foreground">Futuros</p>
+          </div>
+          <p className="text-sm font-semibold text-foreground">
+            US$ {futuresPrice.toLocaleString('pt-BR', { minimumFractionDigits: futuresPrice < 1 ? 4 : 2 })}
           </p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground mb-1">Vol. 24h</p>
+          <p className="text-sm font-semibold text-foreground">${volume24h}</p>
         </div>
       </div>
       
-      <div className="mt-4 pt-4 border-t border-border">
-        <div className="flex justify-between items-center">
-          <p className="text-xs text-muted-foreground">Volume 24h</p>
-          <p className="text-sm font-medium text-foreground">${volume24h}</p>
-        </div>
+      <div className="mt-3 pt-3 border-t border-border/50">
+        <Badge className={`text-xs px-2 py-1 ${futuresType.color}`}>
+          📊 {futuresType.label}
+        </Badge>
       </div>
     </Card>
   );

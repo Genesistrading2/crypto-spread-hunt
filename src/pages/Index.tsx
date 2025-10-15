@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { ArbitrageCard } from "@/components/ArbitrageCard";
 import { StatsCard } from "@/components/StatsCard";
-import { Activity, TrendingUp, Zap } from "lucide-react";
+import { SettingsDialog } from "@/components/SettingsDialog";
+import { Activity, TrendingUp, Zap, Target, RefreshCw, Wifi } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 
 interface ArbitrageData {
   symbol: string;
@@ -10,198 +14,136 @@ interface ArbitrageData {
   futuresPrice: number;
   spread: number;
   volume24h: string;
+  exchange: string;
 }
 
 const Index = () => {
-  const [opportunities, setOpportunities] = useState<ArbitrageData[]>([
-    {
-      symbol: "BTC",
-      name: "Bitcoin",
-      spotPrice: 43250.00,
-      futuresPrice: 43850.00,
-      spread: 1.39,
-      volume24h: "28.4B",
-    },
-    {
-      symbol: "ETH",
-      name: "Ethereum",
-      spotPrice: 2280.50,
-      futuresPrice: 2310.20,
-      spread: 1.30,
-      volume24h: "12.8B",
-    },
-    {
-      symbol: "BNB",
-      name: "Binance Coin",
-      spotPrice: 315.80,
-      futuresPrice: 318.50,
-      spread: 0.85,
-      volume24h: "1.9B",
-    },
-    {
-      symbol: "SOL",
-      name: "Solana",
-      spotPrice: 98.45,
-      futuresPrice: 99.80,
-      spread: 1.37,
-      volume24h: "2.1B",
-    },
-    {
-      symbol: "XRP",
-      name: "Ripple",
-      spotPrice: 0.625,
-      futuresPrice: 0.632,
-      spread: 1.12,
-      volume24h: "3.2B",
-    },
-    {
-      symbol: "ADA",
-      name: "Cardano",
-      spotPrice: 0.485,
-      futuresPrice: 0.488,
-      spread: 0.62,
-      volume24h: "450M",
-    },
-    {
-      symbol: "AVAX",
-      name: "Avalanche",
-      spotPrice: 36.20,
-      futuresPrice: 36.85,
-      spread: 1.80,
-      volume24h: "680M",
-    },
-    {
-      symbol: "DOGE",
-      name: "Dogecoin",
-      spotPrice: 0.085,
-      futuresPrice: 0.086,
-      spread: 1.18,
-      volume24h: "890M",
-    },
-    {
-      symbol: "MATIC",
-      name: "Polygon",
-      spotPrice: 0.892,
-      futuresPrice: 0.901,
-      spread: 1.01,
-      volume24h: "520M",
-    },
-    {
-      symbol: "DOT",
-      name: "Polkadot",
-      spotPrice: 7.45,
-      futuresPrice: 7.53,
-      spread: 1.07,
-      volume24h: "380M",
-    },
-    {
-      symbol: "LINK",
-      name: "Chainlink",
-      spotPrice: 14.80,
-      futuresPrice: 14.95,
-      spread: 1.01,
-      volume24h: "620M",
-    },
-    {
-      symbol: "UNI",
-      name: "Uniswap",
-      spotPrice: 6.25,
-      futuresPrice: 6.30,
-      spread: 0.80,
-      volume24h: "290M",
-    },
-    {
-      symbol: "ATOM",
-      name: "Cosmos",
-      spotPrice: 10.15,
-      futuresPrice: 10.28,
-      spread: 1.28,
-      volume24h: "340M",
-    },
-    {
-      symbol: "LTC",
-      name: "Litecoin",
-      spotPrice: 72.30,
-      futuresPrice: 73.10,
-      spread: 1.11,
-      volume24h: "580M",
-    },
-    {
-      symbol: "TRX",
-      name: "Tron",
-      spotPrice: 0.105,
-      futuresPrice: 0.106,
-      spread: 0.95,
-      volume24h: "420M",
-    },
-    {
-      symbol: "APT",
-      name: "Aptos",
-      spotPrice: 8.92,
-      futuresPrice: 9.05,
-      spread: 1.46,
-      volume24h: "310M",
-    },
-  ]);
+  const [opportunities, setOpportunities] = useState<ArbitrageData[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string>("");
 
-  // Simular atualização em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setOpportunities((prev) =>
-        prev.map((opp) => {
-          const variation = (Math.random() - 0.5) * 2; // -1% a +1%
-          const newSpotPrice = opp.spotPrice * (1 + variation / 100);
-          const newFuturesPrice = opp.futuresPrice * (1 + variation / 100);
-          const newSpread = ((newFuturesPrice - newSpotPrice) / newSpotPrice) * 100;
-          
-          return {
-            ...opp,
-            spotPrice: newSpotPrice,
-            futuresPrice: newFuturesPrice,
-            spread: newSpread,
-          };
-        })
+  const fetchBinanceData = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/binance-arbitrage`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
       );
-    }, 3000); // Atualiza a cada 3 segundos
 
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dados');
+      }
+
+      const result = await response.json();
+      setOpportunities(result.data);
+      setIsConnected(true);
+      setLastUpdate(new Date().toLocaleTimeString('pt-BR'));
+      toast.success("Dados atualizados com sucesso!");
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+      toast.error("Erro ao conectar com a Binance API");
+      setIsConnected(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBinanceData();
+    
+    // Atualizar a cada 10 segundos
+    const interval = setInterval(fetchBinanceData, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  const activeOpportunities = opportunities.filter((opp) => opp.spread > 0.5).length;
-  const avgSpread = (
-    opportunities.reduce((sum, opp) => sum + opp.spread, 0) / opportunities.length
-  ).toFixed(2);
+  const activeOpportunities = opportunities.filter((opp) => Math.abs(opp.spread) > 0.8).length;
+  const maxSpread = opportunities.length > 0 
+    ? Math.max(...opportunities.map(opp => Math.abs(opp.spread))).toFixed(2)
+    : "0.00";
+  const avgSpread = opportunities.length > 0
+    ? (opportunities.reduce((sum, opp) => sum + Math.abs(opp.spread), 0) / opportunities.length).toFixed(3)
+    : "0.000";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-6">
+      <header className="border-b border-white/10 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-1">
-                Arbitragem Cripto
-              </h1>
-              <p className="text-muted-foreground">
-                Monitor de spreads Spot vs Futuros em tempo real
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/20 rounded-lg">
+                <Target className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white mb-0.5">
+                  Monitor de Arbitragem Cripto
+                </h1>
+                <p className="text-sm text-white/60">
+                  Oportunidades Spot × Futuros em Tempo Real
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-success">
-              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span className="text-sm font-medium">Ao Vivo</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-success/20 rounded-lg border border-success/30">
+                <Wifi className="h-4 w-4 text-success" />
+                <div className="text-left">
+                  <p className="text-xs text-success font-medium">
+                    {isConnected ? "Conectado" : "Desconectado"}
+                  </p>
+                  {lastUpdate && (
+                    <p className="text-xs text-success/70">{lastUpdate}</p>
+                  )}
+                </div>
+              </div>
+              <Button
+                onClick={fetchBinanceData}
+                disabled={isLoading}
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+              <SettingsDialog />
             </div>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-6">
+        {/* Alert */}
+        <Alert className="mb-6 bg-warning/10 border-warning/30 text-warning">
+          <Activity className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            💡 <strong>Dados em Tempo Real Simulados</strong> - Spreads baseados em padrões reais de mercado. 
+            Oportunidades acima de 0.8% merecem atenção. Considere taxas de funding, slippage e custos de transação.
+          </AlertDescription>
+        </Alert>
+
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <StatsCard
-            title="Oportunidades Ativas"
-            value={activeOpportunities.toString()}
-            description="Spread > 0.5%"
+            title="Total Ativos"
+            value={opportunities.length.toString()}
+            description="Pares monitorados"
+            icon={Zap}
+          />
+          <StatsCard
+            title="Spread Máx"
+            value={`${maxSpread}%`}
+            description="Maior spread detectado"
             icon={TrendingUp}
+          />
+          <StatsCard
+            title="Oportunidades"
+            value={activeOpportunities.toString()}
+            description="Spread > 0.8%"
+            icon={Target}
           />
           <StatsCard
             title="Spread Médio"
@@ -209,22 +151,22 @@ const Index = () => {
             description="Média geral"
             icon={Activity}
           />
-          <StatsCard
-            title="Pares Monitorados"
-            value={opportunities.length.toString()}
-            description="Atualização a cada 3s"
-            icon={Zap}
-          />
         </div>
 
         {/* Arbitrage Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {opportunities
-            .sort((a, b) => b.spread - a.spread)
-            .map((opp) => (
-              <ArbitrageCard key={opp.symbol} {...opp} />
-            ))}
-        </div>
+        {opportunities.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-white/60">Carregando dados da Binance...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {opportunities
+              .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
+              .map((opp) => (
+                <ArbitrageCard key={opp.symbol} {...opp} />
+              ))}
+          </div>
+        )}
       </main>
     </div>
   );
