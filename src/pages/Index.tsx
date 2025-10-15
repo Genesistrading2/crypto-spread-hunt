@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArbitrageCard } from "@/components/ArbitrageCard";
 import { StatsCard } from "@/components/StatsCard";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { Activity, TrendingUp, Zap, Target, RefreshCw, Wifi } from "lucide-react";
+import { Activity, TrendingUp, Zap, Target, RefreshCw, Wifi, Percent, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { HistoryPanel } from "@/components/HistoryPanel";
 
 interface ArbitrageData {
   symbol: string;
@@ -15,6 +16,18 @@ interface ArbitrageData {
   spread: number;
   volume24h: string;
   exchange: string;
+  lastUpdateTs?: number;
+}
+
+interface OpportunityHistoryItem {
+  id: string;
+  timestamp: string; // ISO
+  symbol: string;
+  name: string;
+  spread: number;
+  spotPrice: number;
+  futuresPrice: number;
+  exchange: string;
 }
 
 const Index = () => {
@@ -22,6 +35,72 @@ const Index = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [history, setHistory] = useState<OpportunityHistoryItem[]>([]);
+
+  const HISTORY_KEY = "arbitrage_history_v1";
+  const feePerLeg = parseFloat(localStorage.getItem("settings_fee_per_leg") || "0.10");
+  const slipPerLeg = parseFloat(localStorage.getItem("settings_slip_per_leg") || "0.05");
+  const outlierPct = parseFloat(localStorage.getItem("settings_outlier_pct") || "8");
+  const profitMethod = (localStorage.getItem("settings_profit_method") || "max") as "max" | "median" | "p95" | "average";
+  const oppThreshold = parseFloat(localStorage.getItem("settings_threshold") || "0.5");
+  const uiThrottleMs = parseInt(localStorage.getItem("settings_ui_throttle_ms") || "800");
+  const minHoldMs = parseInt(localStorage.getItem("settings_min_hold_ms") || "3000");
+
+  const loadHistoryForToday = () => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return [] as OpportunityHistoryItem[];
+      const parsed: OpportunityHistoryItem[] = JSON.parse(raw);
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      return parsed.filter((item) => new Date(item.timestamp).getTime() >= startOfDay);
+    } catch {
+      return [] as OpportunityHistoryItem[];
+    }
+  };
+
+  const persistHistory = (items: OpportunityHistoryItem[]) => {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+    } catch {
+      // ignore quota errors
+    }
+  };
+
+  const mergeHistory = (
+    current: OpportunityHistoryItem[],
+    additions: OpportunityHistoryItem[]
+  ) => {
+    const bySymbol = new Map<string, OpportunityHistoryItem>();
+    // seed with current items, one por símbolo (mantém o mais recente)
+    for (const item of current) {
+      const existing = bySymbol.get(item.symbol);
+      if (!existing || new Date(item.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+        bySymbol.set(item.symbol, item);
+      }
+    }
+    // apply additions: substitui somente se o novo tiver spread absoluto maior ou timestamp mais recente com spread diferente
+    for (const add of additions) {
+      const existing = bySymbol.get(add.symbol);
+      if (!existing) {
+        bySymbol.set(add.symbol, add);
+        continue;
+      }
+      const sameRounded = Math.abs(existing.spread).toFixed(2) === Math.abs(add.spread).toFixed(2);
+      if (sameRounded) {
+        // mesma oportunidade (mesmo spread arredondado) → não duplica; apenas atualiza timestamp para o mais recente
+        if (new Date(add.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+          bySymbol.set(add.symbol, { ...existing, timestamp: add.timestamp });
+        }
+      } else {
+        // mantém o de maior magnitude
+        if (Math.abs(add.spread) > Math.abs(existing.spread)) {
+          bySymbol.set(add.symbol, add);
+        }
+      }
+    }
+    return Array.from(bySymbol.values());
+  };
 
   const fetchBinanceData = async () => {
     setIsLoading(true);
@@ -40,7 +119,31 @@ const Index = () => {
       }
 
       const result = await response.json();
-      setOpportunities(result.data);
+      // mantemos Spot/Futuros/Volume do REST como base e iniciamos lastUpdateTs
+      const nowTs = Date.now();
+      const withTs: ArbitrageData[] = (result.data as ArbitrageData[]).map((o) => ({ ...o, lastUpdateTs: nowTs }));
+      setOpportunities(withTs);
+      // registrar oportunidades acima de 0.8% no histórico
+      const nowIso = new Date().toISOString();
+      const newItems: OpportunityHistoryItem[] = (result.data as ArbitrageData[])
+        .filter((o) => Math.abs(o.spread) > oppThreshold && Math.abs(o.spread) <= outlierPct)
+        .map((o) => ({
+          id: `${nowIso}-${o.symbol}`,
+          timestamp: nowIso,
+          symbol: o.symbol,
+          name: o.name,
+          spread: o.spread,
+          spotPrice: o.spotPrice,
+          futuresPrice: o.futuresPrice,
+          exchange: o.exchange,
+        }));
+
+      if (newItems.length > 0) {
+        const current = loadHistoryForToday();
+        const merged = mergeHistory(current, newItems);
+        setHistory(merged);
+        persistHistory(merged);
+      }
       setIsConnected(true);
       setLastUpdate(new Date().toLocaleTimeString('pt-BR'));
       toast.success("Dados atualizados com sucesso!");
@@ -54,6 +157,7 @@ const Index = () => {
   };
 
   useEffect(() => {
+    setHistory(loadHistoryForToday());
     fetchBinanceData();
     
     // Atualizar a cada 10 segundos
@@ -61,7 +165,173 @@ const Index = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const activeOpportunities = opportunities.filter((opp) => Math.abs(opp.spread) > 0.8).length;
+  // ---- WebSocket em tempo real (Binance Futures markPrice) ----
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+
+  const symbolsList = [
+    'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','AVAXUSDT','DOGEUSDT','MATICUSDT','DOTUSDT','LINKUSDT','UNIUSDT','ATOMUSDT','LTCUSDT','TRXUSDT','APTUSDT'
+  ];
+
+  const openWsConnection = () => {
+    const streams = symbolsList.map(s => `${s.toLowerCase()}@markPrice`).join('/');
+    const url = `wss://fstream.binance.com/stream?streams=${streams}`;
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      reconnectAttemptsRef.current = 0;
+      setIsConnected(true);
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+      // reconectar com backoff exponencial simples
+      const attempt = Math.min(5, reconnectAttemptsRef.current + 1);
+      reconnectAttemptsRef.current = attempt;
+      const delay = Math.pow(2, attempt) * 1000;
+      setTimeout(() => {
+        openWsConnection();
+      }, delay);
+    };
+
+    ws.onerror = () => {
+      try { ws.close(); } catch {}
+    };
+
+    let lastUiUpdate = 0;
+    ws.onmessage = (evt) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        const data = payload?.data || payload; // combinado/único
+        // Estrutura esperada: { s: 'BTCUSDT', p: 'markPrice', i: 'indexPrice' }
+        const symbol = data?.s as string | undefined;
+        const mark = parseFloat(data?.p);
+        const index = parseFloat(data?.i);
+        if (!symbol || !isFinite(mark) || !isFinite(index) || index <= 0) return;
+
+        const spread = ((mark - index) / index) * 100;
+        if (Math.abs(spread) > outlierPct) return; // ignora outlier
+
+        const now = Date.now();
+        if (now - lastUiUpdate < uiThrottleMs) return; // throttle UI updates
+        lastUiUpdate = now;
+
+        setOpportunities(prev => {
+          // se já existir no estado, atualiza preços e spread; senão cria estrutura básica
+          const exists = prev.find(o => (o.symbol === symbol.replace('USDT','')) || (o.symbol === symbol));
+          const baseName = exists?.name || symbol.replace('USDT','');
+          const baseVolume = exists?.volume24h || "-";
+          const prettySymbol = symbol.replace('USDT','');
+          const updated: ArbitrageData = {
+            symbol: prettySymbol,
+            name: baseName,
+            // Atualiza apenas preços; se REST ainda não carregou, usa os atuais do WS
+            spotPrice: isFinite(index) ? index : (exists?.spotPrice ?? index),
+            futuresPrice: isFinite(mark) ? mark : (exists?.futuresPrice ?? mark),
+            spread,
+            volume24h: baseVolume,
+            exchange: 'Binance',
+            lastUpdateTs: now,
+          };
+          // manter item por pelo menos minHoldMs após aparecer acima do limiar
+          const appearedKey = `hold_${prettySymbol}`;
+          if (Math.abs(spread) > oppThreshold && !localStorage.getItem(appearedKey)) {
+            localStorage.setItem(appearedKey, String(now));
+          }
+
+          const next = prev.filter(o => {
+            if (o.symbol === prettySymbol) return false; // vamos substituir
+            const holdKey = `hold_${o.symbol}`;
+            const ts = parseInt(localStorage.getItem(holdKey) || "0");
+            if (ts === 0) return true;
+            // se o item caiu abaixo do limiar mas ainda está no período de hold, mantemos
+            const stillHolding = now - ts < minHoldMs;
+            const stillAbove = Math.abs(o.spread) > oppThreshold;
+            if (!stillAbove && stillHolding) return true;
+            if (!stillAbove && !stillHolding) {
+              localStorage.removeItem(holdKey);
+            }
+            return stillAbove || stillHolding;
+          });
+          next.push(updated);
+          return next;
+        });
+
+        // registrar no histórico se passar o limiar
+        if (Math.abs(spread) > oppThreshold) {
+          const nowIso = new Date().toISOString();
+          const item: OpportunityHistoryItem = {
+            id: `${nowIso}-${symbol}`,
+            timestamp: nowIso,
+            symbol: symbol.replace('USDT',''),
+            name: symbol.replace('USDT',''),
+            spread,
+            spotPrice: index,
+            futuresPrice: mark,
+            exchange: 'Binance',
+          };
+          const current = loadHistoryForToday();
+          const merged = mergeHistory(current, [item]);
+          setHistory(merged);
+          persistHistory(merged);
+        }
+      } catch {
+        // silencia erros de parsing
+      }
+    };
+  };
+
+  useEffect(() => {
+    openWsConnection();
+    return () => {
+      try { wsRef.current?.close(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dailyProfitPercent = useMemo(() => {
+    if (history.length === 0) return 0;
+    // agrupar por símbolo
+    const bySymbol = new Map<string, number[]>();
+    for (const h of history) {
+      if (Math.abs(h.spread) > outlierPct) continue;
+      const arr = bySymbol.get(h.symbol) || [];
+      arr.push(Math.abs(h.spread));
+      bySymbol.set(h.symbol, arr);
+    }
+
+    const totalCost = feePerLeg + feePerLeg + slipPerLeg + slipPerLeg; // ida e volta
+
+    const perSymbolProfit: number[] = [];
+    for (const [, arr] of bySymbol) {
+      if (arr.length === 0) continue;
+      let base = 0;
+      const sorted = arr.slice().sort((a, b) => a - b);
+      switch (profitMethod) {
+        case "median":
+          base = sorted[Math.floor(sorted.length / 2)];
+          break;
+        case "p95":
+          base = sorted[Math.floor(sorted.length * 0.95)];
+          break;
+        case "average":
+          base = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+          break;
+        default:
+          base = sorted[sorted.length - 1]; // máximo
+      }
+      const net = Math.max(0, base - totalCost);
+      perSymbolProfit.push(net);
+    }
+
+    if (perSymbolProfit.length === 0) return 0;
+    const avg = perSymbolProfit.reduce((a, b) => a + b, 0) / perSymbolProfit.length;
+    return avg;
+  }, [history, feePerLeg, slipPerLeg, outlierPct, profitMethod]);
+
+  const opportunityThreshold = oppThreshold || 0.5;
+  const activeOpportunities = opportunities.filter((opp) => Math.abs(opp.spread) > opportunityThreshold).length;
   const maxSpread = opportunities.length > 0 
     ? Math.max(...opportunities.map(opp => Math.abs(opp.spread))).toFixed(2)
     : "0.00";
@@ -126,7 +396,7 @@ const Index = () => {
         </Alert>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <StatsCard
             title="Total Ativos"
             value={opportunities.length.toString()}
@@ -142,7 +412,7 @@ const Index = () => {
           <StatsCard
             title="Oportunidades"
             value={activeOpportunities.toString()}
-            description="Spread > 0.8%"
+            description={`Spread > ${opportunityThreshold.toFixed(2)}%`}
             icon={Target}
           />
           <StatsCard
@@ -151,22 +421,35 @@ const Index = () => {
             description="Média geral"
             icon={Activity}
           />
+          <StatsCard
+            title="Lucro Teórico (Hoje)"
+            value={`${dailyProfitPercent.toFixed(2)}%`}
+            description="Média spreads positivos"
+            icon={Percent}
+          />
         </div>
 
-        {/* Arbitrage Cards */}
-        {opportunities.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-white/60">Carregando dados da Binance...</p>
+        {/* Arbitrage Cards + History Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            {opportunities.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white/60">Carregando dados da Binance...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {opportunities
+                  .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
+                  .map((opp) => (
+                    <ArbitrageCard key={opp.symbol} {...opp} />
+                  ))}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {opportunities
-              .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
-              .map((opp) => (
-                <ArbitrageCard key={opp.symbol} {...opp} />
-              ))}
+          <div>
+            <HistoryPanel items={history} icon={History} />
           </div>
-        )}
+        </div>
       </main>
     </div>
   );

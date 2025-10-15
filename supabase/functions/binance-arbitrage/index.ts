@@ -13,6 +13,7 @@ interface BinanceSpotPrice {
 interface BinanceFuturesPrice {
   symbol: string;
   markPrice: string;
+  indexPrice: string;
 }
 
 interface BinanceTickerVolume {
@@ -37,7 +38,7 @@ serve(async (req) => {
     const spotResponse = await fetch('https://api.binance.com/api/v3/ticker/price');
     const spotPrices: BinanceSpotPrice[] = await spotResponse.json();
     
-    // Buscar preços de futuros
+    // Buscar preços de futuros (mark e indexPrice)
     const futuresResponse = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
     const futuresPrices: BinanceFuturesPrice[] = await futuresResponse.json();
     
@@ -69,11 +70,16 @@ serve(async (req) => {
       const futures = futuresPrices.find((p) => p.symbol === symbol);
       const volume = volumes.find((v) => v.symbol === symbol);
 
-      if (!spot || !futures) return null;
+      if (!futures) return null;
 
-      const spotPrice = parseFloat(spot.price);
+      // Preferimos indexPrice do mercado de futuros como referência spot para evitar defasagem
+      const indexPrice = parseFloat(futures.indexPrice);
       const futuresPrice = parseFloat(futures.markPrice);
-      const spread = ((futuresPrice - spotPrice) / spotPrice) * 100;
+      const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
+      // Spread baseado em mark x index do próprio contrato
+      const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
+      // Descartar outliers improváveis (ex.: > 10%)
+      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
       
       const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
       const formattedVolume = vol24h > 1e9 
@@ -85,7 +91,7 @@ serve(async (req) => {
       return {
         symbol: symbol.replace('USDT', ''),
         name: cryptoNames[symbol] || symbol,
-        spotPrice,
+        spotPrice: referenceSpot,
         futuresPrice,
         spread,
         volume24h: formattedVolume,
