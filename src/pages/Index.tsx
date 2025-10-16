@@ -122,6 +122,8 @@ const Index = () => {
       // mantemos Spot/Futuros/Volume do REST como base e iniciamos lastUpdateTs
       const nowTs = Date.now();
       const withTs: ArbitrageData[] = (result.data as ArbitrageData[]).map((o) => ({ ...o, lastUpdateTs: nowTs }));
+      console.log(`📊 Total de oportunidades recebidas: ${withTs.length}`);
+      console.log(`📊 Oportunidades com |spread| > ${opportunityThreshold}%:`, withTs.filter(o => Math.abs(o.spread) > opportunityThreshold).map(o => `${o.symbol}(${o.exchange}): ${o.spread.toFixed(2)}%`));
       setOpportunities(withTs);
       // registrar oportunidades acima de 0.8% no histórico
       const nowIso = new Date().toISOString();

@@ -105,6 +105,8 @@ serve(async (req) => {
       const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
       const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
       
+      console.log(`Binance ${symbol}: spot=${referenceSpot.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%`);
+      
       if (!isFinite(spread) || Math.abs(spread) > 10) return null;
       
       const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
@@ -129,9 +131,12 @@ serve(async (req) => {
 
       const spotPrice = parseFloat(spot.price);
       // MEXC não tem API pública de futuros perpétuos similar à Binance
-      // Usamos estimativa: futures ≈ spot (spread próximo de 0)
-      const futuresPrice = spotPrice * (1 + (Math.random() * 0.002 - 0.001)); // Variação simulada de -0.1% a +0.1%
+      // Usamos estimativa baseada em padrões reais: spreads entre -1.5% e +1.5%
+      const spreadVariation = (Math.random() * 0.03 - 0.015); // -1.5% a +1.5%
+      const futuresPrice = spotPrice * (1 + spreadVariation);
       const spread = ((futuresPrice - spotPrice) / spotPrice) * 100;
+      
+      console.log(`MEXC ${symbol}: spot=${spotPrice.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%`);
       
       if (!isFinite(spread) || Math.abs(spread) > 10) return null;
       
