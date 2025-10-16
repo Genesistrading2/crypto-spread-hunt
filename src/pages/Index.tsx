@@ -149,7 +149,7 @@ const Index = () => {
       toast.success("Dados atualizados com sucesso!");
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
-      toast.error("Erro ao conectar com a Binance API");
+      toast.error("Erro ao conectar com as exchanges");
       setIsConnected(false);
     } finally {
       setIsLoading(false);
@@ -387,11 +387,11 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-6">
         {/* Alert */}
-        <Alert className="mb-6 bg-warning/10 border-warning/30 text-warning">
+        <Alert className="mb-6 bg-success/10 border-success/30 text-success">
           <Activity className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            💡 <strong>Dados em Tempo Real Simulados</strong> - Spreads baseados em padrões reais de mercado. 
-            Oportunidades acima de 0.8% merecem atenção. Considere taxas de funding, slippage e custos de transação.
+            ✅ <strong>Dados Reais em Tempo Real</strong> - Binance (Spot + Futuros via API e WebSocket) e MEXC (Spot via API). 
+            Oportunidades acima de {opportunityThreshold}% são destacadas. Considere taxas de funding, slippage e custos de transação antes de operar.
           </AlertDescription>
         </Alert>
 
@@ -434,14 +434,14 @@ const Index = () => {
           <div className="lg:col-span-2">
             {opportunities.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-white/60">Carregando dados da Binance...</p>
+                <p className="text-white/60">Carregando dados das exchanges...</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
                 {opportunities
                   .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
                   .map((opp) => (
-                    <ArbitrageCard key={opp.symbol} {...opp} />
+                    <ArbitrageCard key={`${opp.symbol}-${opp.exchange}`} {...opp} />
                   ))}
               </div>
             )}
