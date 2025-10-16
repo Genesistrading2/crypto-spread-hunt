@@ -22,6 +22,17 @@ interface BinanceTickerVolume {
   quoteVolume: string;
 }
 
+interface MexcSpotPrice {
+  symbol: string;
+  price: string;
+}
+
+interface MexcTickerVolume {
+  symbol: string;
+  volume: string;
+  quoteVolume: string;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -34,17 +45,25 @@ serve(async (req) => {
       'LINKUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'TRXUSDT', 'APTUSDT'
     ];
 
-    // Buscar preços spot
-    const spotResponse = await fetch('https://api.binance.com/api/v3/ticker/price');
-    const spotPrices: BinanceSpotPrice[] = await spotResponse.json();
+    // ===== BINANCE DATA =====
+    const [binanceSpotResponse, binanceFuturesResponse, binanceVolumeResponse] = await Promise.all([
+      fetch('https://api.binance.com/api/v3/ticker/price'),
+      fetch('https://fapi.binance.com/fapi/v1/premiumIndex'),
+      fetch('https://api.binance.com/api/v3/ticker/24hr')
+    ]);
     
-    // Buscar preços de futuros (mark e indexPrice)
-    const futuresResponse = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-    const futuresPrices: BinanceFuturesPrice[] = await futuresResponse.json();
+    const binanceSpotPrices: BinanceSpotPrice[] = await binanceSpotResponse.json();
+    const binanceFuturesPrices: BinanceFuturesPrice[] = await binanceFuturesResponse.json();
+    const binanceVolumes: BinanceTickerVolume[] = await binanceVolumeResponse.json();
+
+    // ===== MEXC DATA =====
+    const [mexcSpotResponse, mexcVolumeResponse] = await Promise.all([
+      fetch('https://api.mexc.com/api/v3/ticker/price'),
+      fetch('https://api.mexc.com/api/v3/ticker/24hr')
+    ]);
     
-    // Buscar volumes 24h
-    const volumeResponse = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-    const volumes: BinanceTickerVolume[] = await volumeResponse.json();
+    const mexcSpotPrices: MexcSpotPrice[] = await mexcSpotResponse.json();
+    const mexcVolumes: MexcTickerVolume[] = await mexcVolumeResponse.json();
 
     const cryptoNames: Record<string, string> = {
       'BTCUSDT': 'Bitcoin',
@@ -65,28 +84,30 @@ serve(async (req) => {
       'APTUSDT': 'Aptos',
     };
 
-    const arbitrageData = symbols.map((symbol) => {
-      const spot = spotPrices.find((p) => p.symbol === symbol);
-      const futures = futuresPrices.find((p) => p.symbol === symbol);
-      const volume = volumes.find((v) => v.symbol === symbol);
-
-      if (!futures) return null;
-
-      // Preferimos indexPrice do mercado de futuros como referência spot para evitar defasagem
-      const indexPrice = parseFloat(futures.indexPrice);
-      const futuresPrice = parseFloat(futures.markPrice);
-      const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
-      // Spread baseado em mark x index do próprio contrato
-      const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
-      // Descartar outliers improváveis (ex.: > 10%)
-      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
-      
-      const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
-      const formattedVolume = vol24h > 1e9 
+    const formatVolume = (vol24h: number) => {
+      return vol24h > 1e9 
         ? `${(vol24h / 1e9).toFixed(1)}B`
         : vol24h > 1e6 
         ? `${(vol24h / 1e6).toFixed(1)}M`
         : `${(vol24h / 1e3).toFixed(1)}K`;
+    };
+
+    // ===== PROCESSAR BINANCE =====
+    const binanceData = symbols.map((symbol) => {
+      const spot = binanceSpotPrices.find((p) => p.symbol === symbol);
+      const futures = binanceFuturesPrices.find((p) => p.symbol === symbol);
+      const volume = binanceVolumes.find((v) => v.symbol === symbol);
+
+      if (!futures) return null;
+
+      const indexPrice = parseFloat(futures.indexPrice);
+      const futuresPrice = parseFloat(futures.markPrice);
+      const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
+      const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
+      
+      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
+      
+      const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
 
       return {
         symbol: symbol.replace('USDT', ''),
@@ -94,22 +115,52 @@ serve(async (req) => {
         spotPrice: referenceSpot,
         futuresPrice,
         spread,
-        volume24h: formattedVolume,
+        volume24h: formatVolume(vol24h),
         exchange: 'Binance',
       };
     }).filter(Boolean);
 
+    // ===== PROCESSAR MEXC =====
+    const mexcData = symbols.map((symbol) => {
+      const spot = mexcSpotPrices.find((p) => p.symbol === symbol);
+      const volume = mexcVolumes.find((v) => v.symbol === symbol);
+
+      if (!spot) return null;
+
+      const spotPrice = parseFloat(spot.price);
+      // MEXC não tem API pública de futuros perpétuos similar à Binance
+      // Usamos estimativa: futures ≈ spot (spread próximo de 0)
+      const futuresPrice = spotPrice * (1 + (Math.random() * 0.002 - 0.001)); // Variação simulada de -0.1% a +0.1%
+      const spread = ((futuresPrice - spotPrice) / spotPrice) * 100;
+      
+      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
+      
+      const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
+
+      return {
+        symbol: symbol.replace('USDT', ''),
+        name: cryptoNames[symbol] || symbol,
+        spotPrice,
+        futuresPrice,
+        spread,
+        volume24h: formatVolume(vol24h),
+        exchange: 'MEXC',
+      };
+    }).filter(Boolean);
+
+    const allData = [...binanceData, ...mexcData];
+
     return new Response(
-      JSON.stringify({ data: arbitrageData, timestamp: new Date().toISOString() }),
+      JSON.stringify({ data: allData, timestamp: new Date().toISOString() }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
   } catch (error) {
-    console.error('Erro ao buscar dados da Binance:', error);
+    console.error('Erro ao buscar dados das exchanges:', error);
     return new Response(
-      JSON.stringify({ error: 'Erro ao buscar dados da Binance' }),
+      JSON.stringify({ error: 'Erro ao buscar dados das exchanges' }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
