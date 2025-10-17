@@ -16,6 +16,12 @@ interface BinanceFuturesPrice {
   indexPrice: string;
 }
 
+interface BinanceFundingRate {
+  symbol: string;
+  fundingRate: string;
+  fundingTime: number;
+}
+
 interface BinanceTickerVolume {
   symbol: string;
   volume: string;
@@ -46,14 +52,16 @@ serve(async (req) => {
     ];
 
     // ===== BINANCE DATA =====
-    const [binanceSpotResponse, binanceFuturesResponse, binanceVolumeResponse] = await Promise.all([
+    const [binanceSpotResponse, binanceFuturesResponse, binanceFundingResponse, binanceVolumeResponse] = await Promise.all([
       fetch('https://api.binance.com/api/v3/ticker/price'),
       fetch('https://fapi.binance.com/fapi/v1/premiumIndex'),
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?limit=1000'),
       fetch('https://api.binance.com/api/v3/ticker/24hr')
     ]);
     
     const binanceSpotPrices: BinanceSpotPrice[] = await binanceSpotResponse.json();
     const binanceFuturesPrices: BinanceFuturesPrice[] = await binanceFuturesResponse.json();
+    const binanceFundingRates: BinanceFundingRate[] = await binanceFundingResponse.json();
     const binanceVolumes: BinanceTickerVolume[] = await binanceVolumeResponse.json();
 
     // ===== MEXC DATA =====
@@ -97,6 +105,7 @@ serve(async (req) => {
       const spot = binanceSpotPrices.find((p) => p.symbol === symbol);
       const futures = binanceFuturesPrices.find((p) => p.symbol === symbol);
       const volume = binanceVolumes.find((v) => v.symbol === symbol);
+      const funding = binanceFundingRates.find((f) => f.symbol === symbol);
 
       if (!futures) return null;
 
@@ -104,8 +113,9 @@ serve(async (req) => {
       const futuresPrice = parseFloat(futures.markPrice);
       const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
       const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
+      const fundingRate = funding ? parseFloat(funding.fundingRate) * 100 : 0;
       
-      console.log(`Binance ${symbol}: spot=${referenceSpot.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%`);
+      console.log(`Binance ${symbol}: spot=${referenceSpot.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%, funding=${fundingRate.toFixed(4)}%`);
       
       if (!isFinite(spread) || Math.abs(spread) > 10) return null;
       
@@ -117,6 +127,7 @@ serve(async (req) => {
         spotPrice: referenceSpot,
         futuresPrice,
         spread,
+        fundingRate,
         volume24h: formatVolume(vol24h),
         exchange: 'Binance',
       };
@@ -148,6 +159,7 @@ serve(async (req) => {
         spotPrice,
         futuresPrice,
         spread,
+        fundingRate: 0,
         volume24h: formatVolume(vol24h),
         exchange: 'MEXC',
       };

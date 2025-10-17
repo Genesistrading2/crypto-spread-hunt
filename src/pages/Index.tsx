@@ -14,6 +14,7 @@ interface ArbitrageData {
   spotPrice: number;
   futuresPrice: number;
   spread: number;
+  fundingRate?: number;
   volume24h: string;
   exchange: string;
   lastUpdateTs?: number;
@@ -36,6 +37,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const [history, setHistory] = useState<OpportunityHistoryItem[]>([]);
+  const [lastAlertTime, setLastAlertTime] = useState<{ [key: string]: number }>({});
 
   const HISTORY_KEY = "arbitrage_history_v1";
   const feePerLeg = parseFloat(localStorage.getItem("settings_fee_per_leg") || "0.10");
@@ -45,6 +47,51 @@ const Index = () => {
   const oppThreshold = parseFloat(localStorage.getItem("settings_threshold") || "0.5");
   const uiThrottleMs = parseInt(localStorage.getItem("settings_ui_throttle_ms") || "800");
   const minHoldMs = parseInt(localStorage.getItem("settings_min_hold_ms") || "3000");
+
+  // Sistema de alertas
+  const playAlertSound = () => {
+    const enableSound = localStorage.getItem("settings_enable_sound") === "true";
+    if (!enableSound) return;
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  };
+  
+  const checkAndAlert = (opportunity: ArbitrageData) => {
+    const enableAlerts = localStorage.getItem("settings_enable_alerts") === "true";
+    if (!enableAlerts) return;
+    
+    const alertThreshold = parseFloat(localStorage.getItem("settings_alert_threshold") || "1.0");
+    const now = Date.now();
+    const key = `${opportunity.symbol}_${opportunity.exchange}`;
+    const lastAlert = lastAlertTime[key] || 0;
+    
+    // Only alert once per minute per opportunity
+    if (Math.abs(opportunity.spread) >= alertThreshold && now - lastAlert > 60000) {
+      playAlertSound();
+      toast.success(`🚨 ${opportunity.symbol} (${opportunity.exchange}) - Spread de ${opportunity.spread > 0 ? '+' : ''}${opportunity.spread.toFixed(2)}%`, {
+        duration: 5000,
+      });
+      setLastAlertTime(prev => ({ ...prev, [key]: now }));
+    }
+  };
 
   const loadHistoryForToday = () => {
     try {
@@ -119,11 +166,18 @@ const Index = () => {
       }
 
       const result = await response.json();
-      // mantemos Spot/Futuros/Volume do REST como base e iniciamos lastUpdateTs
       const nowTs = Date.now();
       const withTs: ArbitrageData[] = (result.data as ArbitrageData[]).map((o) => ({ ...o, lastUpdateTs: nowTs }));
       console.log(`📊 Total de oportunidades recebidas: ${withTs.length}`);
-      console.log(`📊 Oportunidades com |spread| > ${opportunityThreshold}%:`, withTs.filter(o => Math.abs(o.spread) > opportunityThreshold).map(o => `${o.symbol}(${o.exchange}): ${o.spread.toFixed(2)}%`));
+      console.log(`📊 Oportunidades com |spread| > ${oppThreshold}%:`, withTs.filter(o => Math.abs(o.spread) > oppThreshold).map(o => `${o.symbol}(${o.exchange}): ${o.spread.toFixed(2)}%`));
+      
+      // Check for alerts
+      withTs.forEach(opp => {
+        if (Math.abs(opp.spread) > oppThreshold) {
+          checkAndAlert(opp);
+        }
+      });
+      
       setOpportunities(withTs);
       // registrar oportunidades acima de 0.8% no histórico
       const nowIso = new Date().toISOString();
@@ -443,7 +497,18 @@ const Index = () => {
                 {opportunities
                   .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
                   .map((opp) => (
-                    <ArbitrageCard key={`${opp.symbol}-${opp.exchange}`} {...opp} />
+                    <ArbitrageCard 
+                      key={`${opp.symbol}-${opp.exchange}`}
+                      symbol={opp.symbol}
+                      name={opp.name}
+                      spotPrice={opp.spotPrice}
+                      futuresPrice={opp.futuresPrice}
+                      spread={opp.spread}
+                      fundingRate={opp.fundingRate}
+                      volume24h={opp.volume24h}
+                      exchange={opp.exchange}
+                      lastUpdateTs={opp.lastUpdateTs}
+                    />
                   ))}
               </div>
             )}

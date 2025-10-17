@@ -9,6 +9,7 @@ interface ArbitrageCardProps {
   spotPrice: number;
   futuresPrice: number;
   spread: number;
+  fundingRate?: number;
   volume24h: string;
   exchange: string;
   lastUpdateTs?: number;
@@ -20,6 +21,7 @@ export const ArbitrageCard = ({
   spotPrice,
   futuresPrice,
   spread,
+  fundingRate,
   volume24h,
   exchange,
   lastUpdateTs,
@@ -46,29 +48,42 @@ export const ArbitrageCard = ({
     ? "border-l-4 border-l-emerald-500/60"
     : "border-l-4 border-l-amber-500/60";
 
-  const OperationTargets = ({ spread }: { spread: number }) => {
+  const OperationTargets = ({ spread, fundingRate }: { spread: number; fundingRate?: number }) => {
     const feePerLeg = parseFloat(localStorage.getItem("settings_fee_per_leg") || "0.10");
     const slipPerLeg = parseFloat(localStorage.getItem("settings_slip_per_leg") || "0.05");
     const targetSpread = parseFloat(localStorage.getItem("settings_target_spread") || "0.20");
     const oppThreshold = parseFloat(localStorage.getItem("settings_threshold") || "0.5");
 
     const totalCosts = useMemo(() => feePerLeg + feePerLeg + slipPerLeg + slipPerLeg, [feePerLeg, slipPerLeg]);
+    // Funding rate é cobrado a cada 8 horas (3x ao dia), então para 1 dia completo: funding * 3
+    const dailyFundingCost = fundingRate ? Math.abs(fundingRate) * 3 : 0;
     const minToEnter = useMemo(() => oppThreshold + totalCosts, [oppThreshold, totalCosts]);
-    // alvo estratégico: queremos que o spread convirja até targetSpread (ex.: 0.20%) para fechar a operação
-    // se spread atual for 0.80% e alvo 0.20%, precisamos de redução de 0.60pp na base
     const targetToClose = useMemo(() => Math.max(targetSpread, 0), [targetSpread]);
+    
+    // Lucro líquido estimado = spread - custos totais - funding diário
+    const netProfit = Math.abs(spread) - totalCosts - dailyFundingCost;
 
     const canEnter = Math.abs(spread) >= minToEnter;
     const reachedTarget = Math.abs(spread) <= targetToClose;
 
     return (
-      <>
+      <div className="flex flex-wrap gap-1.5 items-center">
         <Badge className={`text-xs px-2 py-0.5 ${canEnter ? 'bg-emerald-500/20 text-emerald-600' : 'bg-white/10 text-white/60'}`}>
           <PlayCircle className="inline-block h-3.5 w-3.5 mr-1" /> Limiar: {minToEnter.toFixed(2)}%
         </Badge>
         <Badge className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-600">
           <CheckCircle2 className="inline-block h-3.5 w-3.5 mr-1" /> Alvo: {targetToClose.toFixed(2)}%
         </Badge>
+        {fundingRate !== undefined && fundingRate !== 0 && (
+          <Badge className={`text-xs px-2 py-0.5 ${fundingRate > 0 ? 'bg-red-500/20 text-red-600' : 'bg-green-500/20 text-green-600'}`}>
+            Funding: {fundingRate > 0 ? '+' : ''}{fundingRate.toFixed(4)}%
+          </Badge>
+        )}
+        {netProfit > 0 && (
+          <Badge className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-600">
+            💰 Lucro líq.: ~{netProfit.toFixed(2)}%
+          </Badge>
+        )}
         {canEnter && !reachedTarget && (
           <Badge className="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-600">
             Entrar agora
@@ -79,7 +94,7 @@ export const ArbitrageCard = ({
             Atingiu alvo
           </Badge>
         )}
-      </>
+      </div>
     );
   };
 
@@ -120,8 +135,9 @@ export const ArbitrageCard = ({
               <Badge className={`text-xs px-2 py-0.5 ${status.color}`}>
                 {status.label}
               </Badge>
-              {/* alvo */}
-              <OperationTargets spread={spread} />
+            </div>
+            <div className="mt-2">
+              <OperationTargets spread={spread} fundingRate={fundingRate} />
             </div>
             <p className="text-sm text-muted-foreground">{name}</p>
           </div>

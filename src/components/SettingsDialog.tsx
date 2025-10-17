@@ -26,6 +26,9 @@ export const SettingsDialog = () => {
   const [targetSpread, setTargetSpread] = useState<string>(() => localStorage.getItem("settings_target_spread") || "0.20");
   const [uiThrottleMs, setUiThrottleMs] = useState<string>(() => localStorage.getItem("settings_ui_throttle_ms") || "800");
   const [minHoldMs, setMinHoldMs] = useState<string>(() => localStorage.getItem("settings_min_hold_ms") || "3000");
+  const [enableAlerts, setEnableAlerts] = useState<boolean>(() => localStorage.getItem("settings_enable_alerts") === "true");
+  const [alertThreshold, setAlertThreshold] = useState<string>(() => localStorage.getItem("settings_alert_threshold") || "1.0");
+  const [enableSound, setEnableSound] = useState<boolean>(() => localStorage.getItem("settings_enable_sound") === "true");
 
   const handleSave = () => {
     if (!apiKey || !secretKey) {
@@ -44,8 +47,11 @@ export const SettingsDialog = () => {
     localStorage.setItem("settings_target_spread", targetSpread);
     localStorage.setItem("settings_ui_throttle_ms", uiThrottleMs);
     localStorage.setItem("settings_min_hold_ms", minHoldMs);
+    localStorage.setItem("settings_enable_alerts", String(enableAlerts));
+    localStorage.setItem("settings_alert_threshold", alertThreshold);
+    localStorage.setItem("settings_enable_sound", String(enableSound));
     
-    toast.success("Chaves de API salvas com sucesso!");
+    toast.success("Configurações salvas com sucesso!");
     setOpen(false);
   };
 
@@ -127,6 +133,45 @@ export const SettingsDialog = () => {
               <Input id="minHoldMs" type="number" step="100" value={minHoldMs} onChange={(e) => setMinHoldMs(e.target.value)} />
             </div>
           </div>
+          
+          <div className="border-t border-border pt-4 mt-2">
+            <h4 className="font-semibold mb-3">Sistema de Alertas</h4>
+            <div className="grid gap-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="enableAlerts">Ativar alertas</Label>
+                <input
+                  id="enableAlerts"
+                  type="checkbox"
+                  checked={enableAlerts}
+                  onChange={(e) => setEnableAlerts(e.target.checked)}
+                  className="h-4 w-4"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="alertThreshold">Limiar de alerta (% spread)</Label>
+                <Input
+                  id="alertThreshold"
+                  type="number"
+                  step="0.1"
+                  value={alertThreshold}
+                  onChange={(e) => setAlertThreshold(e.target.value)}
+                  disabled={!enableAlerts}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="enableSound">Notificação sonora</Label>
+                <input
+                  id="enableSound"
+                  type="checkbox"
+                  checked={enableSound}
+                  onChange={(e) => setEnableSound(e.target.checked)}
+                  disabled={!enableAlerts}
+                  className="h-4 w-4"
+                />
+              </div>
+            </div>
+          </div>
+          
           <div className="text-sm text-muted-foreground">
             <p>Chaves e parâmetros são armazenados localmente (neste navegador).</p>
           </div>
