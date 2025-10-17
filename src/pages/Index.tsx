@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArbitrageCard } from "@/components/ArbitrageCard";
+import { InterExchangeCard } from "@/components/InterExchangeCard";
 import { StatsCard } from "@/components/StatsCard";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { Activity, TrendingUp, Zap, Target, RefreshCw, Wifi, Percent, History } from "lucide-react";
+import { Activity, TrendingUp, Zap, Target, RefreshCw, Wifi, Percent, History, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { HistoryPanel } from "@/components/HistoryPanel";
 
@@ -20,6 +22,19 @@ interface ArbitrageData {
   lastUpdateTs?: number;
 }
 
+interface InterExchangeData {
+  symbol: string;
+  name: string;
+  binancePrice: number;
+  mexcPrice: number;
+  spread: number;
+  buyExchange: string;
+  sellExchange: string;
+  binanceVolume: string;
+  mexcVolume: string;
+  type: string;
+}
+
 interface OpportunityHistoryItem {
   id: string;
   timestamp: string; // ISO
@@ -33,6 +48,7 @@ interface OpportunityHistoryItem {
 
 const Index = () => {
   const [opportunities, setOpportunities] = useState<ArbitrageData[]>([]);
+  const [interExchangeOpps, setInterExchangeOpps] = useState<InterExchangeData[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>("");
@@ -168,8 +184,11 @@ const Index = () => {
       const result = await response.json();
       const nowTs = Date.now();
       const withTs: ArbitrageData[] = (result.data as ArbitrageData[]).map((o) => ({ ...o, lastUpdateTs: nowTs }));
+      const interExchange: InterExchangeData[] = result.interExchange || [];
+      
       console.log(`📊 Total de oportunidades recebidas: ${withTs.length}`);
       console.log(`📊 Oportunidades com |spread| > ${oppThreshold}%:`, withTs.filter(o => Math.abs(o.spread) > oppThreshold).map(o => `${o.symbol}(${o.exchange}): ${o.spread.toFixed(2)}%`));
+      console.log(`🔄 Inter-exchange: ${interExchange.length} pares`);
       
       // Check for alerts
       withTs.forEach(opp => {
@@ -179,6 +198,7 @@ const Index = () => {
       });
       
       setOpportunities(withTs);
+      setInterExchangeOpps(interExchange);
       // registrar oportunidades acima de 0.8% no histórico
       const nowIso = new Date().toISOString();
       const newItems: OpportunityHistoryItem[] = (result.data as ArbitrageData[])
@@ -388,6 +408,8 @@ const Index = () => {
 
   const opportunityThreshold = oppThreshold || 0.5;
   const activeOpportunities = opportunities.filter((opp) => Math.abs(opp.spread) > opportunityThreshold).length;
+  const interExchangeThreshold = parseFloat(localStorage.getItem("settings_inter_exchange_threshold") || "0.5");
+  const activeInterExchange = interExchangeOpps.filter((opp) => Math.abs(opp.spread) > interExchangeThreshold).length;
   const maxSpread = opportunities.length > 0 
     ? Math.max(...opportunities.map(opp => Math.abs(opp.spread))).toFixed(2)
     : "0.00";
@@ -452,7 +474,7 @@ const Index = () => {
         </Alert>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
           <StatsCard
             title="Total Ativos"
             value={opportunities.length.toString()}
@@ -472,6 +494,12 @@ const Index = () => {
             icon={Target}
           />
           <StatsCard
+            title="Inter-Exchange"
+            value={activeInterExchange.toString()}
+            description={`Viáveis entre exchanges`}
+            icon={ArrowRightLeft}
+          />
+          <StatsCard
             title="Spread Médio"
             value={`${avgSpread}%`}
             description="Média geral"
@@ -484,6 +512,33 @@ const Index = () => {
             icon={Percent}
           />
         </div>
+
+        {/* Inter-Exchange Arbitrage Section */}
+        {interExchangeOpps.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <ArrowRightLeft className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-bold text-white">
+                Arbitragem Inter-Exchange (Binance ↔ MEXC)
+              </h2>
+              <Badge className="bg-primary/20 text-primary">
+                {interExchangeOpps.filter(o => Math.abs(o.spread) > interExchangeThreshold).length} oportunidades
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {interExchangeOpps
+                .filter(opp => Math.abs(opp.spread) > interExchangeThreshold)
+                .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
+                .slice(0, 6)
+                .map((opp) => (
+                  <InterExchangeCard 
+                    key={`inter-${opp.symbol}`}
+                    {...opp}
+                  />
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* Arbitrage Cards + History Panel */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

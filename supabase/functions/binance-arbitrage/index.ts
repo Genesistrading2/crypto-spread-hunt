@@ -165,10 +165,51 @@ serve(async (req) => {
       };
     }).filter(Boolean);
 
+    // ===== ARBITRAGEM INTER-EXCHANGE =====
+    const interExchangeArb = symbols.map((symbol) => {
+      const binanceSpot = binanceSpotPrices.find((p) => p.symbol === symbol);
+      const mexcSpot = mexcSpotPrices.find((p) => p.symbol === symbol);
+      
+      if (!binanceSpot || !mexcSpot) return null;
+      
+      const binancePrice = parseFloat(binanceSpot.price);
+      const mexcPrice = parseFloat(mexcSpot.price);
+      
+      if (!isFinite(binancePrice) || !isFinite(mexcPrice)) return null;
+      
+      // Calcular spread: se Binance mais barato, compra lá e vende na MEXC (spread positivo)
+      const spread = ((mexcPrice - binancePrice) / binancePrice) * 100;
+      
+      if (Math.abs(spread) < 0.1) return null; // Ignorar spreads muito pequenos
+      
+      const binanceVol = binanceVolumes.find((v) => v.symbol === symbol);
+      const mexcVol = mexcVolumes.find((v) => v.symbol === symbol);
+      
+      const binanceVol24h = binanceVol ? parseFloat(binanceVol.quoteVolume) : 0;
+      const mexcVol24h = mexcVol ? parseFloat(mexcVol.quoteVolume) : 0;
+      
+      return {
+        symbol: symbol.replace('USDT', ''),
+        name: cryptoNames[symbol] || symbol,
+        binancePrice,
+        mexcPrice,
+        spread,
+        buyExchange: spread > 0 ? 'Binance' : 'MEXC',
+        sellExchange: spread > 0 ? 'MEXC' : 'Binance',
+        binanceVolume: formatVolume(binanceVol24h),
+        mexcVolume: formatVolume(mexcVol24h),
+        type: 'inter-exchange'
+      };
+    }).filter(Boolean);
+
     const allData = [...binanceData, ...mexcData];
 
     return new Response(
-      JSON.stringify({ data: allData, timestamp: new Date().toISOString() }),
+      JSON.stringify({ 
+        data: allData, 
+        interExchange: interExchangeArb,
+        timestamp: new Date().toISOString() 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,

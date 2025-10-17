@@ -29,6 +29,9 @@ export const SettingsDialog = () => {
   const [enableAlerts, setEnableAlerts] = useState<boolean>(() => localStorage.getItem("settings_enable_alerts") === "true");
   const [alertThreshold, setAlertThreshold] = useState<string>(() => localStorage.getItem("settings_alert_threshold") || "1.0");
   const [enableSound, setEnableSound] = useState<boolean>(() => localStorage.getItem("settings_enable_sound") === "true");
+  const [withdrawalFee, setWithdrawalFee] = useState<string>(() => localStorage.getItem("settings_withdrawal_fee") || "0.15");
+  const [depositFee, setDepositFee] = useState<string>(() => localStorage.getItem("settings_deposit_fee") || "0.0");
+  const [interExchangeThreshold, setInterExchangeThreshold] = useState<string>(() => localStorage.getItem("settings_inter_exchange_threshold") || "0.5");
 
   const handleSave = () => {
     if (!apiKey || !secretKey) {
@@ -50,6 +53,9 @@ export const SettingsDialog = () => {
     localStorage.setItem("settings_enable_alerts", String(enableAlerts));
     localStorage.setItem("settings_alert_threshold", alertThreshold);
     localStorage.setItem("settings_enable_sound", String(enableSound));
+    localStorage.setItem("settings_withdrawal_fee", withdrawalFee);
+    localStorage.setItem("settings_deposit_fee", depositFee);
+    localStorage.setItem("settings_inter_exchange_threshold", interExchangeThreshold);
     
     toast.success("Configurações salvas com sucesso!");
     setOpen(false);
@@ -134,6 +140,44 @@ export const SettingsDialog = () => {
             </div>
           </div>
           
+          <div className="border-t border-border pt-4 mt-2">
+            <h4 className="font-semibold mb-3">Arbitragem Inter-Exchange</h4>
+            <div className="grid gap-3">
+              <div className="grid gap-2 grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="withdrawalFee">Taxa de saque (%)</Label>
+                  <Input
+                    id="withdrawalFee"
+                    type="number"
+                    step="0.01"
+                    value={withdrawalFee}
+                    onChange={(e) => setWithdrawalFee(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="depositFee">Taxa de depósito (%)</Label>
+                  <Input
+                    id="depositFee"
+                    type="number"
+                    step="0.01"
+                    value={depositFee}
+                    onChange={(e) => setDepositFee(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="interExchangeThreshold">Limiar mín. inter-exchange (%)</Label>
+                <Input
+                  id="interExchangeThreshold"
+                  type="number"
+                  step="0.1"
+                  value={interExchangeThreshold}
+                  onChange={(e) => setInterExchangeThreshold(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="border-t border-border pt-4 mt-2">
             <h4 className="font-semibold mb-3">Sistema de Alertas</h4>
             <div className="grid gap-3">
