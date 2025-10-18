@@ -87,6 +87,8 @@ serve(async (req) => {
     const bitgetTickers = bitgetData.data || [];
     const kucoinTickers: KucoinTicker[] = kucoinData.data?.ticker || [];
 
+    console.log(`📊 Dados recebidos: Bybit=${bybitTickers.length}, OKX=${okxTickers.length}, MEXC=${mexcSpotPrices.length}, Gate.io=${gateioTickers.length}, Bitget=${bitgetTickers.length}, KuCoin=${kucoinTickers.length}`);
+
     const cryptoNames: Record<string, string> = {
       'BTCUSDT': 'Bitcoin',
       'ETHUSDT': 'Ethereum',
@@ -223,7 +225,10 @@ serve(async (req) => {
         }
       });
 
-      if (prices.length < 2) return;
+      if (prices.length < 2) {
+        console.log(`⚠️ ${symbol}: apenas ${prices.length} exchanges com preço válido`);
+        return;
+      }
 
       // Encontrar maior e menor preço
       prices.sort((a, b) => a.price - b.price);
@@ -231,6 +236,8 @@ serve(async (req) => {
       const highest = prices[prices.length - 1];
 
       const spread = ((highest.price - lowest.price) / lowest.price) * 100;
+
+      console.log(`💱 ${symbol}: ${lowest.exchange} $${lowest.price.toFixed(2)} → ${highest.exchange} $${highest.price.toFixed(2)} = ${spread.toFixed(2)}%`);
 
       if (Math.abs(spread) > 0.3 && Math.abs(spread) < 10) {
         interExchangeArb.push({

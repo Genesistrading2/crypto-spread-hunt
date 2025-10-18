@@ -420,9 +420,14 @@ const Index = () => {
         {/* Arbitrage Cards + History Panel */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
-            {opportunities.length === 0 ? (
+            {opportunities.length === 0 && interExchangeOpps.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-white/60">Carregando dados das exchanges...</p>
+              </div>
+            ) : opportunities.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white/60">Nenhuma oportunidade spot-futuros disponível no momento.</p>
+                <p className="text-white/40 text-sm mt-2">Veja as oportunidades inter-exchange acima.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
