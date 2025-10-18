@@ -5,38 +5,41 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface BinanceSpotPrice {
+interface ExchangePrice {
   symbol: string;
   price: string;
 }
 
-interface BinanceFuturesPrice {
-  symbol: string;
-  markPrice: string;
-  indexPrice: string;
-}
-
-interface BinanceFundingRate {
-  symbol: string;
-  fundingRate: string;
-  fundingTime: number;
-}
-
-interface BinanceTickerVolume {
+interface ExchangeVolume {
   symbol: string;
   volume: string;
   quoteVolume: string;
 }
 
-interface MexcSpotPrice {
+interface BybitTicker {
   symbol: string;
-  price: string;
+  lastPrice: string;
+  volume24h: string;
+  turnover24h: string;
 }
 
-interface MexcTickerVolume {
+interface OkxTicker {
+  instId: string;
+  last: string;
+  vol24h: string;
+  volCcy24h: string;
+}
+
+interface GateioTicker {
+  currency_pair: string;
+  last: string;
+  quote_volume: string;
+}
+
+interface KucoinTicker {
   symbol: string;
-  volume: string;
-  quoteVolume: string;
+  last: string;
+  volValue: string;
 }
 
 serve(async (req) => {
@@ -46,37 +49,47 @@ serve(async (req) => {
 
   try {
     const symbols = [
-      'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
+      'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT',
       'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'MATICUSDT', 'DOTUSDT',
       'LINKUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'TRXUSDT', 'APTUSDT'
     ];
 
-    // ===== BINANCE DATA =====
-    const [binanceSpotResponse, binanceFuturesResponse, binanceFundingResponse, binanceVolumeResponse] = await Promise.all([
-      fetch('https://api.binance.com/api/v3/ticker/price'),
-      fetch('https://fapi.binance.com/fapi/v1/premiumIndex'),
-      fetch('https://fapi.binance.com/fapi/v1/fundingRate?limit=1000'),
-      fetch('https://api.binance.com/api/v3/ticker/24hr')
-    ]);
-    
-    const binanceSpotPrices: BinanceSpotPrice[] = await binanceSpotResponse.json();
-    const binanceFuturesPrices: BinanceFuturesPrice[] = await binanceFuturesResponse.json();
-    const binanceFundingRates: BinanceFundingRate[] = await binanceFundingResponse.json();
-    const binanceVolumes: BinanceTickerVolume[] = await binanceVolumeResponse.json();
-
-    // ===== MEXC DATA =====
-    const [mexcSpotResponse, mexcVolumeResponse] = await Promise.all([
+    // ===== FETCH ALL EXCHANGES =====
+    const [
+      bybitResponse,
+      okxResponse,
+      mexcSpotResponse,
+      mexcVolumeResponse,
+      gateioResponse,
+      bitgetResponse,
+      kucoinResponse
+    ] = await Promise.all([
+      fetch('https://api.bybit.com/v5/market/tickers?category=spot'),
+      fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT'),
       fetch('https://api.mexc.com/api/v3/ticker/price'),
-      fetch('https://api.mexc.com/api/v3/ticker/24hr')
+      fetch('https://api.mexc.com/api/v3/ticker/24hr'),
+      fetch('https://api.gateio.ws/api/v4/spot/tickers'),
+      fetch('https://api.bitget.com/api/v2/spot/market/tickers'),
+      fetch('https://api.kucoin.com/api/v1/market/allTickers')
     ]);
-    
-    const mexcSpotPrices: MexcSpotPrice[] = await mexcSpotResponse.json();
-    const mexcVolumes: MexcTickerVolume[] = await mexcVolumeResponse.json();
+
+    const bybitData = await bybitResponse.json();
+    const okxData = await okxResponse.json();
+    const mexcSpotPrices: ExchangePrice[] = await mexcSpotResponse.json();
+    const mexcVolumes: ExchangeVolume[] = await mexcVolumeResponse.json();
+    const gateioData = await gateioResponse.json();
+    const bitgetData = await bitgetResponse.json();
+    const kucoinData = await kucoinResponse.json();
+
+    const bybitTickers: BybitTicker[] = bybitData.result?.list || [];
+    const okxTickers: OkxTicker[] = okxData.data || [];
+    const gateioTickers: GateioTicker[] = gateioData || [];
+    const bitgetTickers = bitgetData.data || [];
+    const kucoinTickers: KucoinTicker[] = kucoinData.data?.ticker || [];
 
     const cryptoNames: Record<string, string> = {
       'BTCUSDT': 'Bitcoin',
       'ETHUSDT': 'Ethereum',
-      'BNBUSDT': 'Binance Coin',
       'SOLUSDT': 'Solana',
       'XRPUSDT': 'Ripple',
       'ADAUSDT': 'Cardano',
@@ -92,6 +105,37 @@ serve(async (req) => {
       'APTUSDT': 'Aptos',
     };
 
+    const exchangeUrls: Record<string, { spot: string; futures: string }> = {
+      'Bybit': {
+        spot: 'https://www.bybit.com/trade/spot',
+        futures: 'https://www.bybit.com/trade/usdt'
+      },
+      'OKX': {
+        spot: 'https://www.okx.com/trade-spot',
+        futures: 'https://www.okx.com/trade-swap'
+      },
+      'MEXC': {
+        spot: 'https://www.mexc.com/exchange',
+        futures: 'https://futures.mexc.com/exchange'
+      },
+      'Gate.io': {
+        spot: 'https://www.gate.io/trade',
+        futures: 'https://www.gate.io/futures_trade'
+      },
+      'Bitget': {
+        spot: 'https://www.bitget.com/spot',
+        futures: 'https://www.bitget.com/futures'
+      },
+      'KuCoin': {
+        spot: 'https://www.kucoin.com/trade',
+        futures: 'https://www.kucoin.com/futures'
+      },
+      'BingX': {
+        spot: 'https://bingx.com/en-us/spot',
+        futures: 'https://bingx.com/en-us/perpetual'
+      }
+    };
+
     const formatVolume = (vol24h: number) => {
       return vol24h > 1e9 
         ? `${(vol24h / 1e9).toFixed(1)}B`
@@ -100,113 +144,118 @@ serve(async (req) => {
         : `${(vol24h / 1e3).toFixed(1)}K`;
     };
 
-    // ===== PROCESSAR BINANCE =====
-    const binanceData = symbols.map((symbol) => {
-      const spot = binanceSpotPrices.find((p) => p.symbol === symbol);
-      const futures = binanceFuturesPrices.find((p) => p.symbol === symbol);
-      const volume = binanceVolumes.find((v) => v.symbol === symbol);
-      const funding = binanceFundingRates.find((f) => f.symbol === symbol);
-
-      if (!futures) return null;
-
-      const indexPrice = parseFloat(futures.indexPrice);
-      const futuresPrice = parseFloat(futures.markPrice);
-      const referenceSpot = spot ? parseFloat(spot.price) : indexPrice;
-      const spread = ((futuresPrice - indexPrice) / indexPrice) * 100;
-      const fundingRate = funding ? parseFloat(funding.fundingRate) * 100 : 0;
-      
-      console.log(`Binance ${symbol}: spot=${referenceSpot.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%, funding=${fundingRate.toFixed(4)}%`);
-      
-      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
-      
-      const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
-
-      return {
-        symbol: symbol.replace('USDT', ''),
-        name: cryptoNames[symbol] || symbol,
-        spotPrice: referenceSpot,
-        futuresPrice,
-        spread,
-        fundingRate,
-        volume24h: formatVolume(vol24h),
-        exchange: 'Binance',
-      };
-    }).filter(Boolean);
-
-    // ===== PROCESSAR MEXC =====
-    const mexcData = symbols.map((symbol) => {
-      const spot = mexcSpotPrices.find((p) => p.symbol === symbol);
-      const volume = mexcVolumes.find((v) => v.symbol === symbol);
-
-      if (!spot) return null;
-
-      const spotPrice = parseFloat(spot.price);
-      // MEXC não tem API pública de futuros perpétuos similar à Binance
-      // Usamos estimativa baseada em padrões reais: spreads entre -1.5% e +1.5%
-      const spreadVariation = (Math.random() * 0.03 - 0.015); // -1.5% a +1.5%
-      const futuresPrice = spotPrice * (1 + spreadVariation);
-      const spread = ((futuresPrice - spotPrice) / spotPrice) * 100;
-      
-      console.log(`MEXC ${symbol}: spot=${spotPrice.toFixed(2)}, futures=${futuresPrice.toFixed(2)}, spread=${spread.toFixed(3)}%`);
-      
-      if (!isFinite(spread) || Math.abs(spread) > 10) return null;
-      
-      const vol24h = volume ? parseFloat(volume.quoteVolume) : 0;
-
-      return {
-        symbol: symbol.replace('USDT', ''),
-        name: cryptoNames[symbol] || symbol,
-        spotPrice,
-        futuresPrice,
-        spread,
-        fundingRate: 0,
-        volume24h: formatVolume(vol24h),
-        exchange: 'MEXC',
-      };
-    }).filter(Boolean);
+    // Helper para obter preço e volume de cada exchange
+    const getExchangePrice = (symbol: string, exchange: string): { price: number; volume: number } | null => {
+      try {
+        switch(exchange) {
+          case 'Bybit': {
+            const ticker = bybitTickers.find((t: BybitTicker) => t.symbol === symbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.lastPrice),
+              volume: parseFloat(ticker.turnover24h || '0')
+            };
+          }
+          case 'OKX': {
+            const okxSymbol = symbol.replace('USDT', '-USDT');
+            const ticker = okxTickers.find((t: OkxTicker) => t.instId === okxSymbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.last),
+              volume: parseFloat(ticker.volCcy24h || '0')
+            };
+          }
+          case 'MEXC': {
+            const price = mexcSpotPrices.find((p) => p.symbol === symbol);
+            const vol = mexcVolumes.find((v) => v.symbol === symbol);
+            if (!price) return null;
+            return {
+              price: parseFloat(price.price),
+              volume: vol ? parseFloat(vol.quoteVolume) : 0
+            };
+          }
+          case 'Gate.io': {
+            const gateSymbol = symbol.replace('USDT', '_USDT');
+            const ticker = gateioTickers.find((t: GateioTicker) => t.currency_pair === gateSymbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.last),
+              volume: parseFloat(ticker.quote_volume || '0')
+            };
+          }
+          case 'Bitget': {
+            const ticker = bitgetTickers.find((t: any) => t.symbol === symbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.lastPr || '0'),
+              volume: parseFloat(ticker.quoteVolume || '0')
+            };
+          }
+          case 'KuCoin': {
+            const kucoinSymbol = symbol.replace('USDT', '-USDT');
+            const ticker = kucoinTickers.find((t: KucoinTicker) => t.symbol === kucoinSymbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.last),
+              volume: parseFloat(ticker.volValue || '0')
+            };
+          }
+          default:
+            return null;
+        }
+      } catch (e) {
+        console.error(`Error getting ${exchange} price for ${symbol}:`, e);
+        return null;
+      }
+    };
 
     // ===== ARBITRAGEM INTER-EXCHANGE =====
-    const interExchangeArb = symbols.map((symbol) => {
-      const binanceSpot = binanceSpotPrices.find((p) => p.symbol === symbol);
-      const mexcSpot = mexcSpotPrices.find((p) => p.symbol === symbol);
-      
-      if (!binanceSpot || !mexcSpot) return null;
-      
-      const binancePrice = parseFloat(binanceSpot.price);
-      const mexcPrice = parseFloat(mexcSpot.price);
-      
-      if (!isFinite(binancePrice) || !isFinite(mexcPrice)) return null;
-      
-      // Calcular spread: se Binance mais barato, compra lá e vende na MEXC (spread positivo)
-      const spread = ((mexcPrice - binancePrice) / binancePrice) * 100;
-      
-      if (Math.abs(spread) < 0.1) return null; // Ignorar spreads muito pequenos
-      
-      const binanceVol = binanceVolumes.find((v) => v.symbol === symbol);
-      const mexcVol = mexcVolumes.find((v) => v.symbol === symbol);
-      
-      const binanceVol24h = binanceVol ? parseFloat(binanceVol.quoteVolume) : 0;
-      const mexcVol24h = mexcVol ? parseFloat(mexcVol.quoteVolume) : 0;
-      
-      return {
-        symbol: symbol.replace('USDT', ''),
-        name: cryptoNames[symbol] || symbol,
-        binancePrice,
-        mexcPrice,
-        spread,
-        buyExchange: spread > 0 ? 'Binance' : 'MEXC',
-        sellExchange: spread > 0 ? 'MEXC' : 'Binance',
-        binanceVolume: formatVolume(binanceVol24h),
-        mexcVolume: formatVolume(mexcVol24h),
-        type: 'inter-exchange'
-      };
-    }).filter(Boolean);
+    const exchanges = ['Bybit', 'OKX', 'MEXC', 'Gate.io', 'Bitget', 'KuCoin'];
+    const interExchangeArb: any[] = [];
 
-    const allData = [...binanceData, ...mexcData];
+    symbols.forEach((symbol) => {
+      const prices: Array<{ exchange: string; price: number; volume: number }> = [];
+      
+      exchanges.forEach((exchange) => {
+        const data = getExchangePrice(symbol, exchange);
+        if (data && isFinite(data.price) && data.price > 0) {
+          prices.push({ exchange, ...data });
+        }
+      });
+
+      if (prices.length < 2) return;
+
+      // Encontrar maior e menor preço
+      prices.sort((a, b) => a.price - b.price);
+      const lowest = prices[0];
+      const highest = prices[prices.length - 1];
+
+      const spread = ((highest.price - lowest.price) / lowest.price) * 100;
+
+      if (Math.abs(spread) > 0.3 && Math.abs(spread) < 10) {
+        interExchangeArb.push({
+          symbol: symbol.replace('USDT', ''),
+          name: cryptoNames[symbol] || symbol,
+          buyExchange: lowest.exchange,
+          sellExchange: highest.exchange,
+          buyPrice: lowest.price,
+          sellPrice: highest.price,
+          spread,
+          buyVolume: formatVolume(lowest.volume),
+          sellVolume: formatVolume(highest.volume),
+          type: 'inter-exchange',
+          spotUrl: `${exchangeUrls[lowest.exchange]?.spot}/${symbol}`,
+          buySpotUrl: `${exchangeUrls[lowest.exchange]?.spot}/${symbol}`,
+          sellSpotUrl: `${exchangeUrls[highest.exchange]?.spot}/${symbol}`
+        });
+      }
+    });
+
+    console.log(`✅ Found ${interExchangeArb.length} inter-exchange opportunities`);
 
     return new Response(
       JSON.stringify({ 
-        data: allData, 
+        data: [], // Removido dados de spot-futuros
         interExchange: interExchangeArb,
         timestamp: new Date().toISOString() 
       }),

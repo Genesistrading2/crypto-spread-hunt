@@ -6,25 +6,29 @@ import { useMemo } from "react";
 interface InterExchangeCardProps {
   symbol: string;
   name: string;
-  binancePrice: number;
-  mexcPrice: number;
+  buyPrice: number;
+  sellPrice: number;
   spread: number;
   buyExchange: string;
   sellExchange: string;
-  binanceVolume: string;
-  mexcVolume: string;
+  buyVolume: string;
+  sellVolume: string;
+  buySpotUrl?: string;
+  sellSpotUrl?: string;
 }
 
 export const InterExchangeCard = ({
   symbol,
   name,
-  binancePrice,
-  mexcPrice,
+  buyPrice,
+  sellPrice,
   spread,
   buyExchange,
   sellExchange,
-  binanceVolume,
-  mexcVolume,
+  buyVolume,
+  sellVolume,
+  buySpotUrl,
+  sellSpotUrl,
 }: InterExchangeCardProps) => {
   const getSpreadStatus = () => {
     if (Math.abs(spread) < 0.5) return { label: "BAIXA", color: "bg-yellow-500/20 text-yellow-500" };
@@ -115,9 +119,20 @@ export const InterExchangeCard = ({
             <Zap className="h-3 w-3 text-emerald-500" />
             <p className="text-xs text-muted-foreground">Comprar em</p>
           </div>
-          <p className="text-sm font-semibold text-emerald-400">{buyExchange}</p>
+          {buySpotUrl ? (
+            <a 
+              href={buySpotUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+            >
+              {buyExchange} ↗
+            </a>
+          ) : (
+            <p className="text-sm font-semibold text-emerald-400">{buyExchange}</p>
+          )}
           <p className="text-xs text-muted-foreground">
-            {formatPrice(buyExchange === 'Binance' ? binancePrice : mexcPrice)}
+            {formatPrice(buyPrice)}
           </p>
         </div>
         <div>
@@ -125,18 +140,29 @@ export const InterExchangeCard = ({
             <DollarSign className="h-3 w-3 text-blue-500" />
             <p className="text-xs text-muted-foreground">Vender em</p>
           </div>
-          <p className="text-sm font-semibold text-blue-400">{sellExchange}</p>
+          {sellSpotUrl ? (
+            <a 
+              href={sellSpotUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-blue-400 hover:text-blue-300 underline cursor-pointer"
+            >
+              {sellExchange} ↗
+            </a>
+          ) : (
+            <p className="text-sm font-semibold text-blue-400">{sellExchange}</p>
+          )}
           <p className="text-xs text-muted-foreground">
-            {formatPrice(sellExchange === 'Binance' ? binancePrice : mexcPrice)}
+            {formatPrice(sellPrice)}
           </p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground mb-1">Liquidez</p>
+          <p className="text-xs text-muted-foreground mb-1">Liquidez 24h</p>
           <p className="text-xs text-foreground">
-            Bin: {binanceVolume}
+            {buyExchange}: {buyVolume}
           </p>
           <p className="text-xs text-foreground">
-            MEXC: {mexcVolume}
+            {sellExchange}: {sellVolume}
           </p>
         </div>
       </div>

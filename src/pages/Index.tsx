@@ -25,14 +25,16 @@ interface ArbitrageData {
 interface InterExchangeData {
   symbol: string;
   name: string;
-  binancePrice: number;
-  mexcPrice: number;
+  buyPrice: number;
+  sellPrice: number;
   spread: number;
   buyExchange: string;
   sellExchange: string;
-  binanceVolume: string;
-  mexcVolume: string;
+  buyVolume: string;
+  sellVolume: string;
   type: string;
+  buySpotUrl?: string;
+  sellSpotUrl?: string;
 }
 
 interface OpportunityHistoryItem {
@@ -241,131 +243,6 @@ const Index = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // ---- WebSocket em tempo real (Binance Futures markPrice) ----
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-
-  const symbolsList = [
-    'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','AVAXUSDT','DOGEUSDT','MATICUSDT','DOTUSDT','LINKUSDT','UNIUSDT','ATOMUSDT','LTCUSDT','TRXUSDT','APTUSDT'
-  ];
-
-  const openWsConnection = () => {
-    const streams = symbolsList.map(s => `${s.toLowerCase()}@markPrice`).join('/');
-    const url = `wss://fstream.binance.com/stream?streams=${streams}`;
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      reconnectAttemptsRef.current = 0;
-      setIsConnected(true);
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      // reconectar com backoff exponencial simples
-      const attempt = Math.min(5, reconnectAttemptsRef.current + 1);
-      reconnectAttemptsRef.current = attempt;
-      const delay = Math.pow(2, attempt) * 1000;
-      setTimeout(() => {
-        openWsConnection();
-      }, delay);
-    };
-
-    ws.onerror = () => {
-      try { ws.close(); } catch {}
-    };
-
-    let lastUiUpdate = 0;
-    ws.onmessage = (evt) => {
-      try {
-        const payload = JSON.parse(evt.data);
-        const data = payload?.data || payload; // combinado/único
-        // Estrutura esperada: { s: 'BTCUSDT', p: 'markPrice', i: 'indexPrice' }
-        const symbol = data?.s as string | undefined;
-        const mark = parseFloat(data?.p);
-        const index = parseFloat(data?.i);
-        if (!symbol || !isFinite(mark) || !isFinite(index) || index <= 0) return;
-
-        const spread = ((mark - index) / index) * 100;
-        if (Math.abs(spread) > outlierPct) return; // ignora outlier
-
-        const now = Date.now();
-        if (now - lastUiUpdate < uiThrottleMs) return; // throttle UI updates
-        lastUiUpdate = now;
-
-        setOpportunities(prev => {
-          // se já existir no estado, atualiza preços e spread; senão cria estrutura básica
-          const exists = prev.find(o => (o.symbol === symbol.replace('USDT','')) || (o.symbol === symbol));
-          const baseName = exists?.name || symbol.replace('USDT','');
-          const baseVolume = exists?.volume24h || "-";
-          const prettySymbol = symbol.replace('USDT','');
-          const updated: ArbitrageData = {
-            symbol: prettySymbol,
-            name: baseName,
-            // Atualiza apenas preços; se REST ainda não carregou, usa os atuais do WS
-            spotPrice: isFinite(index) ? index : (exists?.spotPrice ?? index),
-            futuresPrice: isFinite(mark) ? mark : (exists?.futuresPrice ?? mark),
-            spread,
-            volume24h: baseVolume,
-            exchange: 'Binance',
-            lastUpdateTs: now,
-          };
-          // manter item por pelo menos minHoldMs após aparecer acima do limiar
-          const appearedKey = `hold_${prettySymbol}`;
-          if (Math.abs(spread) > oppThreshold && !localStorage.getItem(appearedKey)) {
-            localStorage.setItem(appearedKey, String(now));
-          }
-
-          const next = prev.filter(o => {
-            if (o.symbol === prettySymbol) return false; // vamos substituir
-            const holdKey = `hold_${o.symbol}`;
-            const ts = parseInt(localStorage.getItem(holdKey) || "0");
-            if (ts === 0) return true;
-            // se o item caiu abaixo do limiar mas ainda está no período de hold, mantemos
-            const stillHolding = now - ts < minHoldMs;
-            const stillAbove = Math.abs(o.spread) > oppThreshold;
-            if (!stillAbove && stillHolding) return true;
-            if (!stillAbove && !stillHolding) {
-              localStorage.removeItem(holdKey);
-            }
-            return stillAbove || stillHolding;
-          });
-          next.push(updated);
-          return next;
-        });
-
-        // registrar no histórico se passar o limiar
-        if (Math.abs(spread) > oppThreshold) {
-          const nowIso = new Date().toISOString();
-          const item: OpportunityHistoryItem = {
-            id: `${nowIso}-${symbol}`,
-            timestamp: nowIso,
-            symbol: symbol.replace('USDT',''),
-            name: symbol.replace('USDT',''),
-            spread,
-            spotPrice: index,
-            futuresPrice: mark,
-            exchange: 'Binance',
-          };
-          const current = loadHistoryForToday();
-          const merged = mergeHistory(current, [item]);
-          setHistory(merged);
-          persistHistory(merged);
-        }
-      } catch {
-        // silencia erros de parsing
-      }
-    };
-  };
-
-  useEffect(() => {
-    openWsConnection();
-    return () => {
-      try { wsRef.current?.close(); } catch {}
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const dailyProfitPercent = useMemo(() => {
     if (history.length === 0) return 0;
     // agrupar por símbolo
@@ -432,7 +309,7 @@ const Index = () => {
                   Monitor de Arbitragem Cripto
                 </h1>
                 <p className="text-sm text-white/60">
-                  Oportunidades Spot × Futuros em Tempo Real
+                  Oportunidades de Arbitragem Entre Exchanges
                 </p>
               </div>
             </div>
@@ -519,7 +396,7 @@ const Index = () => {
             <div className="flex items-center gap-2 mb-4">
               <ArrowRightLeft className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-bold text-white">
-                Arbitragem Inter-Exchange (Binance ↔ MEXC)
+                Arbitragem Inter-Exchange (Múltiplas Exchanges)
               </h2>
               <Badge className="bg-primary/20 text-primary">
                 {interExchangeOpps.filter(o => Math.abs(o.spread) > interExchangeThreshold).length} oportunidades
