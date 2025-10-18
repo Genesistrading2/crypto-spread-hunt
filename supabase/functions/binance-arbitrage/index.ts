@@ -239,7 +239,7 @@ serve(async (req) => {
 
       console.log(`💱 ${symbol}: ${lowest.exchange} $${lowest.price.toFixed(2)} → ${highest.exchange} $${highest.price.toFixed(2)} = ${spread.toFixed(2)}%`);
 
-      if (Math.abs(spread) > 0.3 && Math.abs(spread) < 10) {
+      if (Math.abs(spread) > 0.05 && Math.abs(spread) < 10) {
         interExchangeArb.push({
           symbol: symbol.replace('USDT', ''),
           name: cryptoNames[symbol] || symbol,
