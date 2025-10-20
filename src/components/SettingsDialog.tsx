@@ -14,8 +14,6 @@ import { Settings } from "lucide-react";
 import { toast } from "sonner";
 
 export const SettingsDialog = () => {
-  const [apiKey, setApiKey] = useState("");
-  const [secretKey, setSecretKey] = useState("");
   const [open, setOpen] = useState(false);
   const [feePerLeg, setFeePerLeg] = useState<string>(() => localStorage.getItem("settings_fee_per_leg") || "0.10");
   const [slipPerLeg, setSlipPerLeg] = useState<string>(() => localStorage.getItem("settings_slip_per_leg") || "0.05");
@@ -34,14 +32,6 @@ export const SettingsDialog = () => {
   const [interExchangeThreshold, setInterExchangeThreshold] = useState<string>(() => localStorage.getItem("settings_inter_exchange_threshold") || "0.5");
 
   const handleSave = () => {
-    if (!apiKey || !secretKey) {
-      toast.error("Por favor, preencha ambas as chaves");
-      return;
-    }
-    
-    // Salvar no localStorage para uso futuro
-    localStorage.setItem("binance_api_key", apiKey);
-    localStorage.setItem("binance_secret_key", secretKey);
     localStorage.setItem("settings_fee_per_leg", feePerLeg);
     localStorage.setItem("settings_slip_per_leg", slipPerLeg);
     localStorage.setItem("settings_outlier_pct", outlierPct);
@@ -72,30 +62,10 @@ export const SettingsDialog = () => {
         <DialogHeader>
           <DialogTitle>Configurações</DialogTitle>
           <DialogDescription>
-            Configure suas chaves e parâmetros de análise.
+            Configure os parâmetros de análise de arbitragem.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="apiKey">API Key</Label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Sua Binance API Key"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="secretKey">Secret Key</Label>
-            <Input
-              id="secretKey"
-              type="password"
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
-              placeholder="Sua Binance Secret Key"
-            />
-          </div>
           <div className="grid gap-2 grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="feePerLeg">Fee por perna (%)</Label>
@@ -217,7 +187,7 @@ export const SettingsDialog = () => {
           </div>
           
           <div className="text-sm text-muted-foreground">
-            <p>Chaves e parâmetros são armazenados localmente (neste navegador).</p>
+            <p>Parâmetros são armazenados localmente (neste navegador).</p>
           </div>
         </div>
         <div className="flex justify-end gap-3">

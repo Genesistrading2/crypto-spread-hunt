@@ -240,8 +240,8 @@ const Index = () => {
     setHistory(loadHistoryForToday());
     fetchBinanceData();
     
-    // Atualizar a cada 10 segundos
-    const interval = setInterval(fetchBinanceData, 10000);
+    // Atualizar a cada 50 segundos
+    const interval = setInterval(fetchBinanceData, 50000);
     return () => clearInterval(interval);
   }, []);
 
@@ -347,8 +347,18 @@ const Index = () => {
         <Alert className="mb-6 bg-success/10 border-success/30 text-success">
           <Activity className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            ✅ <strong>Dados Reais em Tempo Real</strong> - Binance (Spot + Futuros via API e WebSocket) e MEXC (Spot via API). 
-            Oportunidades acima de {opportunityThreshold}% são destacadas. Considere taxas de funding, slippage e custos de transação antes de operar.
+            ✅ <strong>Dados Reais em Tempo Real (Atualização a cada 50s)</strong>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge variant="secondary" className="text-xs">🔵 Bybit</Badge>
+              <Badge variant="secondary" className="text-xs">🟠 OKX</Badge>
+              <Badge variant="secondary" className="text-xs">🔴 MEXC</Badge>
+              <Badge variant="secondary" className="text-xs">🟣 Gate.io</Badge>
+              <Badge variant="secondary" className="text-xs">🟢 Bitget</Badge>
+              <Badge variant="secondary" className="text-xs">🟡 KuCoin</Badge>
+            </div>
+            <p className="mt-2">
+              Oportunidades acima de {opportunityThreshold}% são destacadas. Considere taxas de funding, slippage e custos de transação antes de operar.
+            </p>
           </AlertDescription>
         </Alert>
 
