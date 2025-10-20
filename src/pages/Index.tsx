@@ -20,6 +20,8 @@ interface ArbitrageData {
   volume24h: string;
   exchange: string;
   lastUpdateTs?: number;
+  spotUrl?: string;
+  futuresUrl?: string;
 }
 
 interface InterExchangeData {
@@ -438,14 +440,16 @@ const Index = () => {
                       key={`${opp.symbol}-${opp.exchange}`}
                       symbol={opp.symbol}
                       name={opp.name}
-                      spotPrice={opp.spotPrice}
-                      futuresPrice={opp.futuresPrice}
-                      spread={opp.spread}
-                      fundingRate={opp.fundingRate}
-                      volume24h={opp.volume24h}
-                      exchange={opp.exchange}
-                      lastUpdateTs={opp.lastUpdateTs}
-                    />
+                  spotPrice={opp.spotPrice}
+                  futuresPrice={opp.futuresPrice}
+                  spread={opp.spread}
+                  fundingRate={opp.fundingRate}
+                  volume24h={opp.volume24h}
+                  exchange={opp.exchange}
+                  lastUpdateTs={opp.lastUpdateTs}
+                  spotUrl={opp.spotUrl}
+                  futuresUrl={opp.futuresUrl}
+                />
                   ))}
               </div>
             )}

@@ -13,6 +13,8 @@ interface ArbitrageCardProps {
   volume24h: string;
   exchange: string;
   lastUpdateTs?: number;
+  spotUrl?: string;
+  futuresUrl?: string;
 }
 
 export const ArbitrageCard = ({
@@ -25,6 +27,8 @@ export const ArbitrageCard = ({
   volume24h,
   exchange,
   lastUpdateTs,
+  spotUrl,
+  futuresUrl,
 }: ArbitrageCardProps) => {
   const getSpreadStatus = () => {
     if (Math.abs(spread) < 0.3) return { label: "BAIXA", color: "bg-yellow-500/20 text-yellow-500" };
@@ -190,10 +194,32 @@ export const ArbitrageCard = ({
         </div>
       </div>
       
-      <div className="mt-3 pt-3 border-t border-border/50">
+      <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
         <Badge className={`text-xs px-2 py-1 ${futuresType.color}`}>
           📊 {futuresType.label}
         </Badge>
+        <div className="flex gap-2">
+          {spotUrl && (
+            <a 
+              href={spotUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 text-emerald-600 hover:bg-emerald-500/30 rounded-md transition-colors"
+            >
+              🟢 Spot
+            </a>
+          )}
+          {futuresUrl && (
+            <a 
+              href={futuresUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 text-xs font-medium bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 rounded-md transition-colors"
+            >
+              📈 Futuros
+            </a>
+          )}
+        </div>
       </div>
     </Card>
   );
