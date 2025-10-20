@@ -128,35 +128,60 @@ serve(async (req) => {
       'APTUSDT': 'Aptos',
     };
 
-    const exchangeUrls: Record<string, { spot: string; futures: string }> = {
-      'Bybit': {
-        spot: 'https://www.bybit.com/trade/spot',
-        futures: 'https://www.bybit.com/trade/usdt'
-      },
-      'OKX': {
-        spot: 'https://www.okx.com/trade-spot',
-        futures: 'https://www.okx.com/trade-swap'
-      },
-      'MEXC': {
-        spot: 'https://www.mexc.com/exchange',
-        futures: 'https://futures.mexc.com/exchange'
-      },
-      'Gate.io': {
-        spot: 'https://www.gate.io/trade',
-        futures: 'https://www.gate.io/futures_trade'
-      },
-      'Bitget': {
-        spot: 'https://www.bitget.com/spot',
-        futures: 'https://www.bitget.com/futures'
-      },
-      'KuCoin': {
-        spot: 'https://www.kucoin.com/trade',
-        futures: 'https://www.kucoin.com/futures'
-      },
-      'BingX': {
-        spot: 'https://bingx.com/en-us/spot',
-        futures: 'https://bingx.com/en-us/perpetual'
+    // Helper para formatar símbolo conforme cada exchange
+    const formatSymbolForExchange = (symbol: string, exchange: string, isFutures: boolean = false): string => {
+      const baseSymbol = symbol.replace('USDT', '');
+      
+      switch(exchange) {
+        case 'Bybit':
+          return isFutures ? symbol : symbol;
+        case 'OKX':
+          return isFutures ? `${baseSymbol}-USDT-SWAP` : `${baseSymbol}-USDT`;
+        case 'MEXC':
+          return symbol;
+        case 'Gate.io':
+          return isFutures ? `${baseSymbol}_USDT` : `${baseSymbol}_USDT`;
+        case 'Bitget':
+          return isFutures ? `${symbol}UMCBL` : symbol;
+        case 'KuCoin':
+          return isFutures ? `${symbol}M` : `${baseSymbol}-USDT`;
+        default:
+          return symbol;
       }
+    };
+
+    const getExchangeUrls = (symbol: string, exchange: string): { spot: string; futures: string } => {
+      const spotSymbol = formatSymbolForExchange(symbol, exchange, false);
+      const futuresSymbol = formatSymbolForExchange(symbol, exchange, true);
+      
+      const urls: Record<string, { spot: string; futures: string }> = {
+        'Bybit': {
+          spot: `https://www.bybit.com/trade/spot/${spotSymbol}`,
+          futures: `https://www.bybit.com/trade/usdt/${futuresSymbol}`
+        },
+        'OKX': {
+          spot: `https://www.okx.com/trade-spot/${spotSymbol}`,
+          futures: `https://www.okx.com/trade-swap/${futuresSymbol}`
+        },
+        'MEXC': {
+          spot: `https://www.mexc.com/exchange/${spotSymbol}`,
+          futures: `https://futures.mexc.com/exchange/${futuresSymbol}`
+        },
+        'Gate.io': {
+          spot: `https://www.gate.io/trade/${spotSymbol}`,
+          futures: `https://www.gate.io/futures_trade/USDT/${futuresSymbol}`
+        },
+        'Bitget': {
+          spot: `https://www.bitget.com/spot/${spotSymbol}`,
+          futures: `https://www.bitget.com/futures/usdt/${futuresSymbol}`
+        },
+        'KuCoin': {
+          spot: `https://www.kucoin.com/trade/${spotSymbol}`,
+          futures: `https://www.kucoin.com/futures/trade/${futuresSymbol}`
+        }
+      };
+      
+      return urls[exchange] || { spot: '', futures: '' };
     };
 
     const formatVolume = (vol24h: number) => {
@@ -319,6 +344,9 @@ serve(async (req) => {
       console.log(`💱 ${symbol}: ${lowest.exchange} $${lowest.price.toFixed(2)} → ${highest.exchange} $${highest.price.toFixed(2)} = ${spread.toFixed(2)}%`);
 
       if (Math.abs(spread) >= 0.05 && Math.abs(spread) < 10) {
+        const buyUrls = getExchangeUrls(symbol, lowest.exchange);
+        const sellUrls = getExchangeUrls(symbol, highest.exchange);
+        
         interExchangeArb.push({
           symbol: symbol.replace('USDT', ''),
           name: cryptoNames[symbol] || symbol,
@@ -330,9 +358,9 @@ serve(async (req) => {
           buyVolume: formatVolume(lowest.volume),
           sellVolume: formatVolume(highest.volume),
           type: 'inter-exchange',
-          spotUrl: `${exchangeUrls[lowest.exchange]?.spot}/${symbol}`,
-          buySpotUrl: `${exchangeUrls[lowest.exchange]?.spot}/${symbol}`,
-          sellSpotUrl: `${exchangeUrls[highest.exchange]?.spot}/${symbol}`
+          spotUrl: buyUrls.spot,
+          buySpotUrl: buyUrls.spot,
+          sellSpotUrl: sellUrls.spot
         });
       }
     });
@@ -353,6 +381,8 @@ serve(async (req) => {
           console.log(`🔀 ${symbol} ${exchange}: Spot $${spotData.price.toFixed(2)} / Fut $${futuresData.price.toFixed(2)} = ${spread.toFixed(2)}%`);
           
           if (Math.abs(spread) >= 0.05 && Math.abs(spread) < 10) {
+            const urls = getExchangeUrls(symbol, exchange);
+            
             spotFuturesArb.push({
               symbol: symbol.replace('USDT', ''),
               name: cryptoNames[symbol] || symbol,
@@ -362,8 +392,8 @@ serve(async (req) => {
               spread,
               volume24h: formatVolume(spotData.volume),
               type: 'spot-futures',
-              spotUrl: `${exchangeUrls[exchange]?.spot}/${symbol}`,
-              futuresUrl: `${exchangeUrls[exchange]?.futures}/${symbol}`
+              spotUrl: urls.spot,
+              futuresUrl: urls.futures
             });
           }
         }
@@ -398,6 +428,9 @@ serve(async (req) => {
           console.log(`🌐 ${symbol} Cross: Spot ${lowestSpot.exchange} $${lowestSpot.price.toFixed(2)} → Fut ${highestFutures.exchange} $${highestFutures.price.toFixed(2)} = ${spread.toFixed(2)}%`);
           
           if (Math.abs(spread) >= 0.05 && Math.abs(spread) < 10) {
+            const spotUrls = getExchangeUrls(symbol, lowestSpot.exchange);
+            const futuresUrls = getExchangeUrls(symbol, highestFutures.exchange);
+            
             spotFuturesArb.push({
               symbol: symbol.replace('USDT', ''),
               name: cryptoNames[symbol] || symbol,
@@ -407,8 +440,8 @@ serve(async (req) => {
               spread,
               volume24h: formatVolume(Math.min(lowestSpot.volume, highestFutures.volume)),
               type: 'spot-futures-cross',
-              spotUrl: `${exchangeUrls[lowestSpot.exchange]?.spot}/${symbol}`,
-              futuresUrl: `${exchangeUrls[highestFutures.exchange]?.futures}/${symbol}`,
+              spotUrl: spotUrls.spot,
+              futuresUrl: futuresUrls.futures,
               buyExchange: lowestSpot.exchange,
               sellExchange: highestFutures.exchange
             });
