@@ -355,6 +355,8 @@ const Index = () => {
               <Badge variant="secondary" className="text-xs">🟣 Gate.io</Badge>
               <Badge variant="secondary" className="text-xs">🟢 Bitget</Badge>
               <Badge variant="secondary" className="text-xs">🟡 KuCoin</Badge>
+              <Badge variant="secondary" className="text-xs">🟡 Binance</Badge>
+              <Badge variant="secondary" className="text-xs">🔵 Mercado Bitcoin</Badge>
             </div>
             <p className="mt-2">
               Oportunidades acima de {opportunityThreshold}% são destacadas. Considere taxas de funding, slippage e custos de transação antes de operar.

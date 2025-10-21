@@ -67,7 +67,9 @@ serve(async (req) => {
       bitgetResponse,
       bitgetFuturesResponse,
       kucoinResponse,
-      kucoinFuturesResponse
+      kucoinFuturesResponse,
+      binanceResponse,
+      mbResponse
     ] = await Promise.all([
       fetch('https://api.bybit.com/v5/market/tickers?category=spot'),
       fetch('https://api.bybit.com/v5/market/tickers?category=linear'),
@@ -80,7 +82,9 @@ serve(async (req) => {
       fetch('https://api.bitget.com/api/v2/spot/market/tickers'),
       fetch('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES'),
       fetch('https://api.kucoin.com/api/v1/market/allTickers'),
-      fetch('https://api-futures.kucoin.com/api/v1/contracts/active')
+      fetch('https://api-futures.kucoin.com/api/v1/contracts/active'),
+      fetch('https://api.binance.com/api/v3/ticker/24hr'),
+      fetch('https://api.mercadobitcoin.net/api/v4/tickers').catch(() => ({ json: async () => [] }))
     ]);
 
     const bybitData = await bybitResponse.json();
@@ -95,6 +99,8 @@ serve(async (req) => {
     const bitgetFuturesData = await bitgetFuturesResponse.json();
     const kucoinData = await kucoinResponse.json();
     const kucoinFuturesData = await kucoinFuturesResponse.json();
+    const binanceData = await binanceResponse.json();
+    const mbData = await mbResponse.json();
 
     const bybitTickers: BybitTicker[] = bybitData.result?.list || [];
     const bybitFuturesTickers: BybitTicker[] = bybitFuturesData.result?.list || [];
@@ -106,8 +112,10 @@ serve(async (req) => {
     const bitgetFuturesTickers = bitgetFuturesData.data || [];
     const kucoinTickers: KucoinTicker[] = kucoinData.data?.ticker || [];
     const kucoinFuturesTickers = kucoinFuturesData.data || [];
+    const binanceTickers = binanceData || [];
+    const mbTickers = Array.isArray(mbData) ? mbData : [];
 
-    console.log(`📊 Dados SPOT recebidos: Bybit=${bybitTickers.length}, OKX=${okxTickers.length}, MEXC=${mexcSpotPrices.length}, Gate.io=${gateioTickers.length}, Bitget=${bitgetTickers.length}, KuCoin=${kucoinTickers.length}`);
+    console.log(`📊 Dados SPOT recebidos: Bybit=${bybitTickers.length}, OKX=${okxTickers.length}, MEXC=${mexcSpotPrices.length}, Gate.io=${gateioTickers.length}, Bitget=${bitgetTickers.length}, KuCoin=${kucoinTickers.length}, Binance=${binanceTickers.length}, MB=${mbTickers.length}`);
     console.log(`📊 Dados FUTUROS recebidos: Bybit=${bybitFuturesTickers.length}, OKX=${okxFuturesTickers.length}, Gate.io=${gateioFuturesTickers.length}, Bitget=${bitgetFuturesTickers.length}, KuCoin=${kucoinFuturesTickers.length}`);
 
     const cryptoNames: Record<string, string> = {
@@ -145,6 +153,10 @@ serve(async (req) => {
           return isFutures ? `${symbol}UMCBL` : symbol;
         case 'KuCoin':
           return isFutures ? `${symbol}M` : `${baseSymbol}-USDT`;
+        case 'Binance':
+          return symbol;
+        case 'Mercado Bitcoin':
+          return `${baseSymbol}-USDT`;
         default:
           return symbol;
       }
@@ -178,6 +190,14 @@ serve(async (req) => {
         'KuCoin': {
           spot: `https://www.kucoin.com/trade/${spotSymbol}`,
           futures: `https://www.kucoin.com/futures/trade/${futuresSymbol}`
+        },
+        'Binance': {
+          spot: `https://www.binance.com/en/trade/${spotSymbol}`,
+          futures: ''
+        },
+        'Mercado Bitcoin': {
+          spot: `https://www.mercadobitcoin.com.br/negociacoes/${symbol.replace('USDT', '').toLowerCase()}-usdt`,
+          futures: ''
         }
       };
       
@@ -248,6 +268,23 @@ serve(async (req) => {
               volume: parseFloat(ticker.volValue || '0')
             };
           }
+          case 'Binance': {
+            const ticker = binanceTickers.find((t: any) => t.symbol === symbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.lastPrice || '0'),
+              volume: parseFloat(ticker.quoteVolume || '0')
+            };
+          }
+          case 'Mercado Bitcoin': {
+            const mbSymbol = symbol.replace('USDT', '-USDT');
+            const ticker = mbTickers.find((t: any) => t.pair === mbSymbol);
+            if (!ticker) return null;
+            return {
+              price: parseFloat(ticker.last || '0'),
+              volume: parseFloat(ticker.vol || '0')
+            };
+          }
           default:
             return null;
         }
@@ -316,7 +353,7 @@ serve(async (req) => {
     };
 
     // ===== ARBITRAGEM INTER-EXCHANGE =====
-    const exchanges = ['Bybit', 'OKX', 'MEXC', 'Gate.io', 'Bitget', 'KuCoin'];
+    const exchanges = ['Bybit', 'OKX', 'MEXC', 'Gate.io', 'Bitget', 'KuCoin', 'Binance', 'Mercado Bitcoin'];
     const interExchangeArb: any[] = [];
 
     symbols.forEach((symbol) => {
